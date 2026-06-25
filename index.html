@@ -44,18 +44,18 @@ window._onSnapshot = onSnapshot;
 window._dbReady = true;
 console.log("Firebase connecté");
 
-// Sync temps réel — écoute le document du contexte actif (sci ou lmnp)
-const ctx = sessionStorage.getItem('ctx') || 'sci';
-const k = (key) => ctx + '_' + key;
-onSnapshot(doc(db, ctx, 'data'), (snap) => {
+// Sync temps réel — recharger si changement depuis autre PC
+const _ctx_fb = sessionStorage.getItem('ctx') || localStorage.getItem('ctx_saved') || 'sci';
+const _k = (key) => _ctx_fb + '_' + key;
+onSnapshot(doc(db,_ctx_fb,'data'), (snap) => {
   if(snap.exists() && window._remoteUpdate){
     const d = snap.data();
-    if(d.budget) localStorage.setItem(k('budget3'), JSON.stringify(d.budget));
-    if(d.factures) localStorage.setItem(k('factures3'), JSON.stringify(d.factures));
-    if(d.fin) localStorage.setItem(k('fin4'), JSON.stringify(d.fin));
-    if(d.locataires) localStorage.setItem(k('locataires'), JSON.stringify(d.locataires));
-    if(d.projection) localStorage.setItem(k('projection'), JSON.stringify(d.projection));
-    if(d.fc) localStorage.setItem(k('fc'), JSON.stringify(d.fc));
+    if(d.budget) localStorage.setItem(_k('budget3'), JSON.stringify(d.budget));
+    if(d.factures) localStorage.setItem(_k('factures3'), JSON.stringify(d.factures));
+    if(d.fin) localStorage.setItem(_k('fin4'), JSON.stringify(d.fin));
+    if(d.locataires) localStorage.setItem(_k('locataires'), JSON.stringify(d.locataires));
+    if(d.projection) localStorage.setItem(_k('projection'), JSON.stringify(d.projection));
+    if(d.fc) localStorage.setItem(_k('fc'), JSON.stringify(d.fc));
     window._remoteUpdate = false;
   }
   window._remoteUpdate = true;
@@ -285,33 +285,31 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 
 <div class="header">
   <div class="header-left" style="display:flex;align-items:center;gap:14px">
-    <div style="width:52px;height:52px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0;background:rgba(255,255,255,.08);border:1px solid var(--border2)" id="header-emoji">🏗</div>
+    <div style="width:48px;height:48px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0;background:rgba(255,255,255,.08);border:1px solid var(--border2)" id="header-emoji">🏗</div>
     <div>
       <h1 id="app-title">SCI LÉMYANE — Suivi des Dépenses</h1>
       <p id="app-subtitle" style="font-size:11px;color:var(--text3);margin:2px 0 0">65 Chemin des Guignardières · Soullans (85300)</p>
     </div>
   </div>
-
-  <!-- SWITCH SCI / LMNP -->
-  <div style="display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:10px;padding:4px;margin:0 8px;flex-shrink:0">
+  <div style="display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:10px;padding:4px;margin:0 8px;flex-shrink:0">
     <button id="switch-btn-sci" onclick="switchContexte('sci')" style="padding:6px 14px;border-radius:7px;border:none;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s">🏗 SCI Lémyane</button>
     <button id="switch-btn-lmnp" onclick="switchContexte('lmnp')" style="padding:6px 14px;border-radius:7px;border:none;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s">🏠 LMNP</button>
   </div>
-
   <div class="header-right" style="align-items:center">
     <div class="badge" id="badge-date"></div>
     <div class="badge" id="sync-status" style="color:#63b3ed;cursor:pointer" onclick="loadFromCloud().then(()=>location.reload())" title="Cliquer pour forcer la synchronisation">☁ Cloud</div>
     <div class="badge" id="drive-status" onclick="connectDrive()" style="color:#68d391;cursor:pointer;display:none" title="Google Drive">📁 Drive</div>
-    <div class="badge" onclick="connectDrive()" id="drive-connect" style="color:#f6ad55;cursor:pointer" title="Connecter Google Drive">📁 Connecter Drive</div>
-    <div class="badge" onclick="scanGmail()" id="btn-gmail" style="color:#f687b3;cursor:pointer;display:none" title="Scanner Gmail">📧 Scanner Gmail</div>
-    <div class="badge" onclick="trierTouteBoite()" id="btn-trier-boite" style="color:#f6ad55;cursor:pointer;display:none" title="Trier Gmail">📂 Trier Gmail</div>
-    <a href="#" target="_blank" id="btn-boite-mail" style="display:none;align-items:center;gap:6px;background:rgba(246,173,85,.1);border:1px solid rgba(246,173,85,.3);border-radius:6px;padding:4px 11px;font-size:11px;color:#f6ad55;text-decoration:none;cursor:pointer">✉ Boîte mail</a>
+    <div class="badge" onclick="connectDrive()" id="drive-connect" style="color:#f6ad55;cursor:pointer" title="Connecter Google Drive pour stocker les PDF">📁 Connecter Drive</div>
+    <div class="badge" onclick="scanGmail()" id="btn-gmail" style="color:#f687b3;cursor:pointer;display:none" title="Scanner Gmail pour importer les factures">📧 Scanner Gmail</div>
+    <div class="badge" onclick="trierTouteBoite()" id="btn-trier-boite" style="color:#f6ad55;cursor:pointer;display:none" title="Trier tous les emails par expéditeur">📂 Trier Gmail</div>
+    <a href="https://mail.google.com/mail/u/0/?authuser=sci.lemyane@gmail.com#inbox" target="_blank" id="btn-boite-mail" style="display:none;align-items:center;gap:6px;background:rgba(246,173,85,.1);border:1px solid rgba(246,173,85,.3);border-radius:6px;padding:4px 11px;font-size:11px;color:#f6ad55;text-decoration:none;cursor:pointer" title="Ouvrir la boîte mail SCI">✉ Boîte mail</a>
     <div id="trier-status" style="display:none;align-items:center;gap:6px;background:rgba(246,173,85,.1);border:1px solid rgba(246,173,85,.3);border-radius:6px;padding:4px 11px;font-size:11px;color:#f6ad55">
       <div style="width:10px;height:10px;border:2px solid rgba(246,173,85,.3);border-top-color:#f6ad55;border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0"></div>
       <span>Tri en cours...</span>
     </div>
     <div class="badge" onclick="logout()" style="color:var(--text3);cursor:pointer;font-size:10px" title="Se déconnecter">🔒</div>
   </div>
+</div
 </div>
 
 <div class="tabs" id="tabs-main"></div>
@@ -452,11 +450,6 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
   </div>
 </div>
 
-<!-- COÛT DE REVIENT LMNP -->
-<div class="content" id="tab-cout-revient">
-  <div id="cout-revient-container"></div>
-</div>
-
 <!-- PROJECTION -->
 <div class="content" id="tab-projection">
   <div class="section-title">Paramètres de la projection</div>
@@ -494,6 +487,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 <!-- FINANCEMENT (crédit, assurances, comptable, impôts) -->
 <div class="content" id="tab-financement">
   <div id="financement-cards-container"></div>
+</div>
+
+<!-- ONGLET COUT DE REVIENT LMNP -->
+<div class="content" id="tab-cout-revient">
+  <div id="cout-revient-container"></div>
 </div>
 
 <!-- DASHBOARD PREVISIONNEL -->
@@ -946,54 +944,37 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 
 <script>
 // ── SYSTÈME DE CONTEXTE SCI / LMNP ──────────────────────────────────────────
-// CTX vaut 'sci' ou 'lmnp'. Toutes les clés localStorage sont préfixées par CTX,
-// ce qui isole complètement les données des deux entités dans le même navigateur.
-// Le contexte est persisté en sessionStorage pour survivre aux rechargements de page
-// sans affecter d'autres onglets ouverts sur l'autre entité.
 let CTX = sessionStorage.getItem('ctx') || localStorage.getItem('ctx_saved') || 'sci';
-// Synchroniser sessionStorage avec la valeur réelle
 sessionStorage.setItem('ctx', CTX);
-function switchContexte(ctx) {
-  if(ctx === CTX) return;
-  // Sauvegarder l'auth dans localStorage AVANT le reload
-  // (sessionStorage peut être vidé selon le navigateur/mode)
+function switchContexte(ctx){
+  if(ctx===CTX)return;
   try{localStorage.setItem('app_auth','1');}catch(e){}
-  sessionStorage.setItem('ctx', ctx);
-  localStorage.setItem('ctx_saved', ctx);
+  sessionStorage.setItem('ctx',ctx);
+  localStorage.setItem('ctx_saved',ctx);
   location.reload();
 }
-function ctxKey(key) { return CTX + '_' + key; }
-
-// Configuration par contexte
-const CTX_CONFIG = {
-  sci: {
-    nom: 'SCI LÉMYANE',
-    sousTitre: '65 Chemin des Guignardières · Soullans (85300) · PC 085 284 25 00049',
-    couleur: '#63b3ed',
-    gmail: 'sci.lemyane@gmail.com',
-    driveFolderName: 'SCI Lemyane Factures',
-    logements: [
-      {key:'A', label:'Logement A', color:'#63b3ed', adresse:'65 Chemin des Guignardières — Logement A, 85300 Soullans'},
-      {key:'B', label:'Logement B', color:'#68d391', adresse:'65 Chemin des Guignardières — Logement B, 85300 Soullans'},
-      {key:'C', label:'Logement C', color:'#f6ad55', adresse:'65 Chemin des Guignardières — Logement C, 85300 Soullans'}
-    ],
-    hasBudgetTravaux: true,
+function ctxKey(key){return CTX+'_'+key;}
+const CTX_CONFIG={
+  sci:{
+    nom:'SCI LÉMYANE',sousTitre:'65 Chemin des Guignardières · Soullans (85300)',
+    couleur:'#63b3ed',gmail:'sci.lemyane@gmail.com',driveFolderName:'SCI Lemyane Factures',
+    logements:[
+      {key:'A',label:'Logement A',color:'#63b3ed'},
+      {key:'B',label:'Logement B',color:'#68d391'},
+      {key:'C',label:'Logement C',color:'#f6ad55'}
+    ],hasBudgetTravaux:true
   },
-  lmnp: {
-    nom: 'LMNP BARRETEAU',
-    sousTitre: 'Sallertaine (85300) — Location Meublée Non Professionnelle',
-    couleur: '#68d391',
-    gmail: 'locationssallertaine@gmail.com',
-    driveFolderName: 'LMNP Barreteau Factures',
-    logements: [
-      {key:'1', label:'49 Allée Jean Pairan', color:'#68d391', adresse:'49 Allée Jean Pairan, 85300 Sallertaine'},
-      {key:'2', label:'49 bis Allée Jean Pairan', color:'#f6ad55', adresse:'49 bis Allée Jean Pairan, 85300 Sallertaine'}
-    ],
-    hasBudgetTravaux: false,
+  lmnp:{
+    nom:'LMNP BARRETEAU',sousTitre:'Sallertaine (85300) — Location Meublée Non Professionnelle',
+    couleur:'#68d391',gmail:'locationssallertaine@gmail.com',driveFolderName:'LMNP Barreteau Factures',
+    logements:[
+      {key:'1',label:'49 Allée Jean Pairan',color:'#68d391'},
+      {key:'2',label:'49 bis Allée Jean Pairan',color:'#f6ad55'}
+    ],hasBudgetTravaux:false
   }
 };
-function getCTXConfig() { return CTX_CONFIG[CTX]; }
-
+function getCTXConfig(){return CTX_CONFIG[CTX];}
+const LOC_LOGEMENTS=getCTXConfig().logements;
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CATEGORIES=[
@@ -1024,8 +1005,6 @@ const LOGS=[
   {key:"Commun",prevKey:"com",color:"#b794f4"}
 ];
 const SCI_LOGO_B64="data:image/png;base64,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YW5dgE5PRdoKEbqsW1bbLv8Au7ngiLss7SBI0/uOuwAI5w8gvewOG77IG4ynD7K2TJN18mWcnLzz2saV1V2l9tNstNTabjSaRt7gx9W5hYx+3HI9pPi7AYDg8gVsw+HLs3P9oufLH9mH+hdwY8l9BJy24g+rbUREvGHa72I6jsmspqfSFiuN0s0sbJYXsHGWHBDmOO24IJ+hC3D4W7Vr/Rur6i3XnTF0prNc48SSvhIZFKwEsefLILmnz4m+S9OuGUxjkrTnma9spnNaa6l0PHpfUY+Lx+pzZ6v8C90B9t4PxRP2IM5/pbfVd5V9HS3Cjmo66niqaadhZLFKwOa9p2IIOxBX749cqjks7Xm2mc23p5I7a/h8utqrjddB0s1wt0zvnoWnM1MTt8ud3s9OY8cjdbZ8IWkdUaYumoZNQWOttrKiCBsJnZgPwX5A+mQvRRGSoGrSeotNOyUzkmY1Lyx8VuhtY6k7TIK+wadr7jSttkUTpYI8tDxJISPYhad2b2Ptp0Bdam5WHRVb39TB3D/tNIXjh4g7YZGDsF7YxuqPqr16mYr2zEH1J1p5jOvfiTz/AMCWdbcf9telLU+oktlLJVs4Kh0LDK3GMPwMj3XIVGPVY3vFvbSszs9kTZFRAnsiZQMpn1T3T3QN038kT2QETonRBd1N0RA38kwiIGCruoiBhN0RA3TdEQMFN0RA3TfyREDdMFEQMFMFEQMFMFEQN0wiIGEToiC7qboiBumCiIGEwURAwUwiIGEwiIGEwidEDBTCdEQMJhEQMJhOiIGEwidEDdXdREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBET2QET29kQFVEQEREBE9vZPb2QEREBERARE9vZAREQVREQEREBET29kBERBCd1QdkRAymURAyoTuiIKDsmURBCd1QdkRAyoTuiIKDsoTuiIKDsmURBCd1QdkRBCd1QdkRAyoTuiIKDsmURBCd1QdkRAymURAymURAymURAymURAymURAyoSURBQSmURAymURAymURAyoSURBQSmURAymURB//2Q==";
-// LOC_LOGEMENTS est dynamique selon le contexte (SCI = 3 logements, LMNP = 2 logements)
-const LOC_LOGEMENTS = getCTXConfig().logements;
 
 let editIdx=null;
 let editLocId=null;
@@ -1034,8 +1013,6 @@ let pendingPdfB64=null,pendingPdfName=null; // saisie
 let editPdfB64=null,editPdfName=null;       // edition
 
 // ── Storage (factures séparées des PDF pour éviter quota) ─────────────────
-// Toutes les clés localStorage sont préfixées par CTX ('sci' ou 'lmnp')
-// pour isoler complètement les données des deux entités.
 function loadData(){
   let b=localStorage.getItem(ctxKey('budget3'));
   let f=localStorage.getItem(ctxKey('factures3'));
@@ -1090,32 +1067,55 @@ function saveFC(d){
 // (Contrat Crédit Mutuel Croix de Vie n°15519 39055 00021188303 - 84 000€ - 3,150% variable
 //  - 264 mois (22 ans) - 1er déblocage 15/04/2026 - apport personnel 3 829,63€ - assurance groupe ~119,80€/an)
 function prefillCreditLogementA(){
-  if(CTX!=='sci')return; // données SCI uniquement
+  if(CTX!=='sci')return;
   const fc=loadFC();
-  if(fc._correctionReelleA)return;
+  if(fc._correctionReelleA)return; // déjà fait, ne pas écraser une saisie ultérieure
   if(!fc.A)fc.A={};
-  fc.A.capital=84000;fc.A.tauxType='variable';fc.A.taux=3.15;fc.A.duree=22;
-  fc.A.debut='2026-04-15';fc.A.apport=3829.63;fc.A.assuremp=119.80;
+  fc.A.capital=84000;
+  fc.A.tauxType='variable';
+  fc.A.taux=3.15;
+  fc.A.duree=22;
+  fc.A.debut='2026-04-15';
+  fc.A.apport=3829.63;
+  fc.A.assuremp=119.80;
   fc._correctionReelleA=true;
   saveFC(fc);
 }
+
+// Correction unique avec les données RÉELLES du contrat de prêt Logement B
+// (Contrat Crédit Mutuel Croix de Vie n°15519 39055 00021188304 - 81 000€ - 3,150% variable
+//  - 264 mois (22 ans) - 1er déblocage 15/04/2026 - apport personnel 3 494,52€ - assurance groupe ~115,52€/an)
 function prefillCreditLogementB(){
-  if(CTX!=='sci')return; // données SCI uniquement
+  if(CTX!=='sci')return;
   const fc=loadFC();
-  if(fc._correctionReelleB)return;
+  if(fc._correctionReelleB)return; // déjà fait, ne pas écraser une saisie ultérieure
   if(!fc.B)fc.B={};
-  fc.B.capital=81000;fc.B.tauxType='variable';fc.B.taux=3.15;fc.B.duree=22;
-  fc.B.debut='2026-04-15';fc.B.apport=3494.52;fc.B.assuremp=115.52;
+  fc.B.capital=81000;
+  fc.B.tauxType='variable';
+  fc.B.taux=3.15;
+  fc.B.duree=22;
+  fc.B.debut='2026-04-15';
+  fc.B.apport=3494.52;
+  fc.B.assuremp=115.52;
   fc._correctionReelleB=true;
   saveFC(fc);
 }
+
+// Correction unique avec les données RÉELLES du contrat de prêt Logement C
+// (Contrat Crédit Mutuel Croix de Vie n°15519 39055 00021188305 - 86 000€ - 3,150% variable
+//  - 264 mois (22 ans) - 1er déblocage 15/04/2026 - apport personnel 4 210,56€ - assurance groupe ~122,64€/an)
 function prefillCreditLogementC(){
-  if(CTX!=='sci')return; // données SCI uniquement
+  if(CTX!=='sci')return;
   const fc=loadFC();
-  if(fc._correctionReelleC)return;
+  if(fc._correctionReelleC)return; // déjà fait, ne pas écraser une saisie ultérieure
   if(!fc.C)fc.C={};
-  fc.C.capital=86000;fc.C.tauxType='variable';fc.C.taux=3.15;fc.C.duree=22;
-  fc.C.debut='2026-04-15';fc.C.apport=4210.56;fc.C.assuremp=122.64;
+  fc.C.capital=86000;
+  fc.C.tauxType='variable';
+  fc.C.taux=3.15;
+  fc.C.duree=22;
+  fc.C.debut='2026-04-15';
+  fc.C.apport=4210.56;
+  fc.C.assuremp=122.64;
   fc._correctionReelleC=true;
   saveFC(fc);
 }
@@ -1142,8 +1142,7 @@ function fmtSize(bytes){return bytes<1024*1024?(bytes/1024).toFixed(0)+' KB':(by
 
 function getBudgetTotals(budget){
   const cfg=getCTXConfig();
-  const byCat={};
-  const byLog={com:0};
+  const byCat={},byLog={com:0};
   cfg.logements.forEach(lg=>{byLog[lg.key]=0;});
   CATEGORIES.forEach(cat=>{
     let total=0,com=0;
@@ -1160,11 +1159,9 @@ function getBudgetTotals(budget){
   });
   return{byCat,byLog};
 }
-
 function getReelTotals(factures){
   const cfg=getCTXConfig();
-  const byCat={};
-  const byLog={Commun:0};
+  const byCat={},byLog={Commun:0};
   cfg.logements.forEach(lg=>{byLog[lg.label]=0;});
   CATEGORIES.forEach(c=>{byCat[c.name]=0;});
   const nLogs=cfg.logements.length;
@@ -1173,12 +1170,9 @@ function getReelTotals(factures){
     const ttc=+f.ttc||0;
     if(byCat[f.cat]!==undefined)byCat[f.cat]+=ttc;
     if(f.log==='Commun'){
-      // Répartition égale sur tous les logements
       cfg.logements.forEach(lg=>{byLog[lg.label]+=ttc/nLogs;});
       byLog['Commun']+=ttc;
-    } else if(byLog[f.log]!==undefined){
-      byLog[f.log]+=ttc;
-    }
+    } else if(byLog[f.log]!==undefined){byLog[f.log]+=ttc;}
   });
   return{byCat,byLog};
 }
@@ -1452,39 +1446,31 @@ function clearUpload(isEdit){
 
 // ── TABS ─────────────────────────────────────────────────────────────────
 // ── NAVIGATION (groupes + sous-onglets) ────────────────────────────────────
-// Onglets dynamiques selon le contexte
 function getTabGroups(){
-  if(CTX==='lmnp'){
-    return [
-      {id:'comptabilite',label:'🧾 Comptabilité',tabs:['factures','annuel','saisie']},
-      {id:'locataires',label:'🏠 Locataires',tabs:['locataires','gestion-locative','rentabilite']},
-      {id:'financement',label:'💰 Financement',tabs:['cout-revient','financement']}
-    ];
-  }
-  return [
+  if(CTX==='lmnp'){return[
+    {id:'comptabilite',label:'🧾 Comptabilité',tabs:['factures','annuel','saisie']},
+    {id:'locataires',label:'🏠 Locataires',tabs:['locataires','gestion-locative','rentabilite']},
+    {id:'financement',label:'💰 Financement',tabs:['financement']}
+  ];}
+  return[
     {id:'construction',label:'🏗️ Construction prévisionnelle',tabs:['synthese','logements','budget','dashboard']},
     {id:'comptabilite',label:'🧾 Comptabilité',tabs:['factures','annuel','saisie']},
     {id:'locataires',label:'🏠 Locataires',tabs:['locataires','gestion-locative','rentabilite']},
     {id:'financement',label:'💰 Financement',tabs:['projection','financement']}
   ];
 }
-function getTabLabels(){
-  return{
-    synthese:'Synthèse', logements:'Par logement', budget:'Budget prévisionnel', dashboard:'📊 Dashboard Prév.',
-    factures:'Factures réelles', annuel:'📅 Par année', saisie:'+ Saisir une facture',
-    locataires:'Fiches & loyers', 'gestion-locative':'📁 Gestion locative', rentabilite:'📈 Rentabilité',
-    projection:'🔭 Projection 20 ans', financement:'💳 Crédit & charges',
-    'cout-revient':'💰 Coût de revient'
-  };
-}
-// Garder la compatibilité avec le code existant qui référence TAB_GROUPS/TAB_LABELS directement
-let TAB_GROUPS=getTabGroups();
+function getTabLabels(){return{
+  synthese:'Synthèse',logements:'Par logement',budget:'Budget prévisionnel',dashboard:'📊 Dashboard Prév.',
+  factures:'Factures réelles',annuel:'📅 Par année',saisie:'+ Saisir une facture',
+  locataires:'Fiches & loyers','gestion-locative':'📁 Gestion locative',rentabilite:'📈 Rentabilité',
+  projection:'🔭 Projection 20 ans',financement:'💳 Crédit & charges'
+};}
+const TAB_GROUPS=getTabGroups();
 const TAB_LABELS=getTabLabels();
 let activeGroup=getTabGroups()[0].id;
 
 function renderNavigation(activeTabId){
-  const groups=getTabGroups();
-  const labels=getTabLabels();
+  const groups=getTabGroups(),labels=getTabLabels();
   document.getElementById('tabs-main').innerHTML=groups.map(g=>
     `<div class="tab ${g.id===activeGroup?'active':''}" onclick="showGroup('${g.id}')">${g.label}</div>`
   ).join('');
@@ -1493,28 +1479,25 @@ function renderNavigation(activeTabId){
     `<div class="tab ${t===activeTabId?'active':''}" onclick="showTab('${t}')">${labels[t]||t}</div>`
   ).join('');
 }
-
 function showGroup(groupId){
   activeGroup=groupId;
   const group=getTabGroups().find(g=>g.id===groupId);
   if(group)showTab(group.tabs[0]);
 }
-
 function showTab(id){
   const group=getTabGroups().find(g=>g.tabs.includes(id));
   if(group)activeGroup=group.id;
   renderNavigation(id);
   document.querySelectorAll('.content').forEach(c=>c.classList.remove('active'));
-  const tabEl=document.getElementById('tab-'+id);
-  if(tabEl)tabEl.classList.add('active');
+  const tabEl=document.getElementById('tab-'+id);if(tabEl)tabEl.classList.add('active');
   if(id==='synthese')renderSynthese();
   if(id==='logements')renderLogements();
   if(id==='locataires')renderLocataires();
   if(id==='gestion-locative')renderGestionLocative();
   if(id==='rentabilite')renderRentabilite();
-  if(id==='cout-revient')renderCoutRevient();
   if(id==='projection')renderProjection();
   if(id==='financement')renderFinancement();
+  if(id==='cout-revient')renderCoutRevient();
   if(id==='budget')renderBudget();
   if(id==='dashboard')renderDashboard();
   if(id==='factures')renderFactures();
@@ -1553,19 +1536,19 @@ function renderSynthese(){
 
   // Tableau de bord par logement — dynamique selon le contexte
   const cfg=getCTXConfig();
-  const logColors={};
-  cfg.logements.forEach(lg=>{logColors[lg.key]=lg.color;});
+  const logColors={};cfg.logements.forEach(lg=>{logColors[lg.key]=lg.color;});
+  document.getElementById('synth-log-cards').style.gridTemplateColumns=`repeat(${cfg.logements.length},1fr)`;
   document.getElementById('synth-log-cards').innerHTML=cfg.logements.map(lg=>{
     const l=lg.key;
     const p=bPrev[l]||0;
     const r=bReel[lg.label]||0;
     const lPct=p>0?Math.min(r/p*100,100):0;
     const reste=p-r;
-    const nbFac=factures.filter(f=>(f.log===lg.label||f.log===l)&&f.inclus!==false).length;
+    const nbFac=factures.filter(f=>(f.log===lg.label)&&f.inclus!==false).length;
     // Alertes catégories pour ce logement
     const catAlertes=CATEGORIES.filter(cat=>{
       const pr=(budget[cat.name]||[]).reduce((s,row)=>s+(+row[l.toLowerCase()]||+row[l]||0),0);
-      const re=factures.filter(f=>(f.log===lg.label||f.log===l)&&f.cat===cat.name&&f.inclus!==false).reduce((s,f)=>s+(+f.ttc||0),0);
+      const re=factures.filter(f=>f.log===lg.label&&f.cat===cat.name&&f.inclus!==false).reduce((s,f)=>s+(+f.ttc||0),0);
       return pr>0&&re>pr*0.8;
     }).length;
     return`<div class="log-card" style="--lc:${logColors[l]};padding:20px">
@@ -2699,7 +2682,6 @@ async function syncToCloud(){
     const fcData=loadFC();
     const syncEl=document.getElementById('sync-status');
     if(syncEl){syncEl.textContent='⟳ Sync...';syncEl.style.color='#f6ad55';}
-    // Document Firestore séparé par contexte : 'sci' ou 'lmnp'
     await window._setDoc(window._doc(window._db,CTX,'data'),{
       budget,factures,fin,locataires,projection,fc:fcData,
       updated: new Date().toISOString()
@@ -2725,7 +2707,7 @@ async function loadFromCloud(){
     if(d.locataires)localStorage.setItem(ctxKey('locataires'),JSON.stringify(d.locataires));
     if(d.projection)localStorage.setItem(ctxKey('projection'),JSON.stringify(d.projection));
     if(d.fc)localStorage.setItem(ctxKey('fc'),JSON.stringify(d.fc));
-    console.log('Données chargées depuis le cloud (contexte: '+CTX+')');
+    console.log('Données chargées depuis le cloud');
   }catch(e){console.error('Load from cloud error:',e);}
 }
 
@@ -2833,31 +2815,6 @@ function getMonthsOccupied(loc){
 
 function renderLocataires(){
   const locs=loadLocataires();
-
-  // Détection données corrompues : locataires SCI affichés en LMNP ou vice versa
-  if(CTX==='lmnp'&&locs.length>0){
-    const cfg=getCTXConfig();
-    const validKeys=cfg.logements.map(l=>l.key);
-    const corrompus=locs.filter(l=>!validKeys.includes(l.logement));
-    if(corrompus.length>0){
-      const container=document.getElementById('tab-locataires');
-      if(container){
-        const existingBanner=document.getElementById('data-corruption-banner');
-        if(!existingBanner){
-          const banner=document.createElement('div');
-          banner.id='data-corruption-banner';
-          banner.style.cssText='background:rgba(252,129,129,.1);border:1px solid rgba(252,129,129,.3);border-radius:10px;padding:14px 18px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:12px';
-          banner.innerHTML=`<div>
-            <div style="font-size:13px;font-weight:700;color:#fc8181;margin-bottom:4px">⚠ Données incorrectes détectées</div>
-            <div style="font-size:11px;color:var(--text2)">Des locataires de la SCI apparaissent dans le LMNP suite à une ancienne synchronisation. Cliquez sur "Purger" pour nettoyer.</div>
-          </div>
-          <button onclick="purgeLmnpData()" class="btn btn-sm" style="background:rgba(252,129,129,.15);border-color:rgba(252,129,129,.4);color:#fc8181;flex-shrink:0">🗑 Purger les données LMNP</button>`;
-          container.insertBefore(banner, container.firstChild);
-        }
-      }
-    }
-  }
-
   const now=new Date();
   const y=now.getFullYear(), m=now.getMonth()+1;
   const mk=monthKey(y,m);
@@ -3175,158 +3132,45 @@ function getOccupationYear(logKey,year){
   return occupiedDays(logKey,year+'-01-01',year+'-12-31');
 }
 
-function purgeLmnpData(){
-  if(!confirm('Effacer toutes les données LMNP (locataires, factures, financement) pour repartir propre ?'))return;
-  ['locataires','factures3','budget3','fin4','projection','fc','gl_docs'].forEach(k=>{
-    localStorage.removeItem(ctxKey(k));
-  });
-  // Effacer aussi les PDFs LMNP
-  let i=0;
-  while(localStorage.getItem(ctxKey('pdf_'+i))!==null){
-    localStorage.removeItem(ctxKey('pdf_'+i));
-    i++;
-    if(i>200)break;
-  }
-  alert('Données LMNP effacées. La page va se recharger.');
-  location.reload();
-}
-
 function renderCoutRevient(){
   const cfg=getCTXConfig();
   const{factures}=loadData();
-  const fin=loadFinancement();
+  const fc=loadFC();
   const container=document.getElementById('cout-revient-container');
   if(!container)return;
-
-  // Calcul par logement
   const logsData=cfg.logements.map(lg=>{
-    // Dépenses réelles facturées à ce logement
-    const factLog=factures.filter(f=>{
-      const log=f.log||'';
-      return log===lg.label||log.includes(lg.key);
-    });
-    const totalFac=factLog.reduce((s,f)=>s+(+f.ttc||0),0);
-    const facPayees=factLog.filter(f=>f.statut==='Payée').reduce((s,f)=>s+(+f.ttc||0),0);
-
-    // Financement (crédit + apport)
-    const credit=+(fin['credit_'+lg.key]||fin['credit'+lg.key]||0);
-    const apport=+(fin['apport_'+lg.key]||fin['apport'+lg.key]||0);
-    const prixAchat=credit+apport;
-
-    // Frais notaire estimés 8%
-    const fraisNotaire=Math.round(prixAchat*0.08);
-
-    return{lg,totalFac,facPayees,credit,apport,prixAchat,fraisNotaire,
-      coutTotal:prixAchat+fraisNotaire+totalFac,
-      nbFac:factLog.length};
+    const factLog=factures.filter(f=>f.log===lg.label||f.log===lg.key);
+    const total=factLog.reduce((s,f)=>s+(+f.ttc||0),0);
+    const credit=+(fc[lg.key]||{}).capital||0;
+    const apport=+(fc[lg.key]||{}).apport||0;
+    const prix=credit+apport;
+    const notaire=Math.round(prix*0.08);
+    return{lg,total,credit,apport,prix,notaire,cout:prix+notaire+total,nb:factLog.length};
   });
-
-  const totalGlobal=logsData.reduce((s,d)=>s+d.coutTotal,0);
-
+  const totalG=logsData.reduce((s,d)=>s+d.cout,0);
   container.innerHTML=`
-    <div class="section-title">Coût de revient — Logements LMNP</div>
-    <p style="font-size:12px;color:var(--text3);margin-bottom:20px">
-      Prix d'acquisition + frais de notaire estimés (8%) + travaux/dépenses facturés par logement.
-    </p>
-
+    <div class="section-title">Coût de revient — ${cfg.nom}</div>
     <div style="display:grid;grid-template-columns:repeat(${cfg.logements.length},1fr);gap:16px;margin-bottom:24px">
-      ${logsData.map(d=>`
-        <div class="table-wrap" style="padding:20px 22px">
-          <div style="font-size:13px;font-weight:700;color:${d.lg.color};margin-bottom:16px;border-bottom:2px solid ${d.lg.color};padding-bottom:8px">
-            🏠 ${d.lg.label}
-          </div>
-          <div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
-            <div style="display:flex;justify-content:space-between">
-              <span style="color:var(--text2)">Crédit immobilier</span>
-              <span style="font-weight:600">${fmt(d.credit)}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between">
-              <span style="color:var(--text2)">Apport personnel</span>
-              <span style="font-weight:600">${fmt(d.apport)}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border2);padding-top:8px">
-              <span style="color:var(--text2)">Prix d'acquisition</span>
-              <span style="font-weight:700;color:#63b3ed">${fmt(d.prixAchat)}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between">
-              <span style="color:var(--text2)">Frais de notaire (~8%)</span>
-              <span style="font-weight:600;color:#f6ad55">${fmt(d.fraisNotaire)}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border2);padding-top:8px">
-              <span style="color:var(--text2)">Travaux / dépenses (${d.nbFac} factures)</span>
-              <span style="font-weight:600;color:#68d391">${fmt(d.totalFac)}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;margin-top:4px;padding:10px 12px;background:rgba(255,255,255,.04);border-radius:8px;border:1px solid var(--border2)">
-              <span style="font-weight:700;font-size:13px">COÛT DE REVIENT TOTAL</span>
-              <span style="font-weight:700;font-size:15px;color:${d.lg.color}">${fmt(d.coutTotal)}</span>
-            </div>
-            ${d.prixAchat>0?`<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3)">
-              <span>dont travaux / prix acquisition</span>
-              <span>${d.prixAchat>0?Math.round(d.totalFac/d.prixAchat*100):0}%</span>
-            </div>`:''}
-          </div>
+      ${logsData.map(d=>`<div class="table-wrap" style="padding:20px 22px">
+        <div style="font-size:13px;font-weight:700;color:${d.lg.color};margin-bottom:14px;border-bottom:2px solid ${d.lg.color};padding-bottom:8px">${d.lg.label}</div>
+        <div style="font-size:12px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Crédit</span><span>${fmt(d.credit)}</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Apport</span><span>${fmt(d.apport)}</span></div>
+          <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border2);padding-top:6px"><span style="color:var(--text2)">Prix d'acquisition</span><b style="color:#63b3ed">${fmt(d.prix)}</b></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Frais notaire (~8%)</span><span style="color:#f6ad55">${fmt(d.notaire)}</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Travaux (${d.nb} factures)</span><span style="color:#68d391">${fmt(d.total)}</span></div>
+          <div style="display:flex;justify-content:space-between;background:rgba(255,255,255,.04);border-radius:8px;padding:10px;margin-top:4px"><b>Coût de revient</b><b style="font-size:16px;color:${d.lg.color}">${fmt(d.cout)}</b></div>
         </div>
-      `).join('')}
+      </div>`).join('')}
     </div>
-
-    <!-- Total global -->
-    <div class="table-wrap" style="padding:18px 22px;margin-bottom:24px">
+    <div class="table-wrap" style="padding:18px 22px">
       <div style="display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:14px;font-weight:700;color:var(--text)">COÛT DE REVIENT GLOBAL (${cfg.logements.length} logements)</span>
-        <span style="font-size:20px;font-weight:700;color:var(--accent)">${fmt(totalGlobal)}</span>
+        <span style="font-size:14px;font-weight:700">TOTAL ${cfg.logements.length} LOGEMENTS</span>
+        <span style="font-size:20px;font-weight:700;color:var(--accent)">${fmt(totalG)}</span>
       </div>
-      <div style="display:flex;gap:24px;margin-top:12px;flex-wrap:wrap">
-        ${logsData.map(d=>`
-          <div style="font-size:11px;color:var(--text3)">
-            <span style="color:${d.lg.color};font-weight:600">${d.lg.label}</span> : ${fmt(d.coutTotal)}
-          </div>
-        `).join('')}
-      </div>
-    </div>
-
-    <!-- Tableau récap des factures par logement -->
-    <div class="section-title">Détail des dépenses par logement</div>
-    ${logsData.map(d=>{
-      const factLog=factures.filter(f=>{
-        const log=f.log||'';
-        return log===d.lg.label||log.includes(d.lg.key);
-      });
-      if(factLog.length===0)return`<p style="font-size:12px;color:var(--text3);margin-bottom:16px">Aucune facture pour ${d.lg.label}.</p>`;
-      return`<div style="margin-bottom:24px">
-        <div style="font-size:12px;font-weight:600;color:${d.lg.color};margin-bottom:8px">${d.lg.label} — ${factLog.length} factures</div>
-        <div class="table-wrap" style="padding:0">
-          <table style="width:100%;border-collapse:collapse">
-            <thead><tr>
-              <th style="padding:8px 12px;font-size:10px;text-align:left;color:var(--text3);border-bottom:1px solid var(--border2)">N°</th>
-              <th style="padding:8px 12px;font-size:10px;text-align:left;color:var(--text3);border-bottom:1px solid var(--border2)">Date</th>
-              <th style="padding:8px 12px;font-size:10px;text-align:left;color:var(--text3);border-bottom:1px solid var(--border2)">Fournisseur</th>
-              <th style="padding:8px 12px;font-size:10px;text-align:left;color:var(--text3);border-bottom:1px solid var(--border2)">Catégorie</th>
-              <th style="padding:8px 12px;font-size:10px;text-align:right;color:var(--text3);border-bottom:1px solid var(--border2)">TTC</th>
-              <th style="padding:8px 12px;font-size:10px;text-align:center;color:var(--text3);border-bottom:1px solid var(--border2)">Statut</th>
-            </tr></thead>
-            <tbody>
-              ${factLog.map(f=>`<tr>
-                <td style="padding:7px 12px;font-size:11px;border-bottom:1px solid var(--border)">${f.num||'—'}</td>
-                <td style="padding:7px 12px;font-size:11px;border-bottom:1px solid var(--border)">${fmtDate(f.date)}</td>
-                <td style="padding:7px 12px;font-size:11px;border-bottom:1px solid var(--border);font-weight:600">${f.four||'—'}</td>
-                <td style="padding:7px 12px;font-size:11px;border-bottom:1px solid var(--border);color:var(--text2)">${f.cat||'—'}</td>
-                <td style="padding:7px 12px;font-size:11px;border-bottom:1px solid var(--border);text-align:right;font-weight:600">${fmt(f.ttc)}</td>
-                <td style="padding:7px 12px;font-size:11px;border-bottom:1px solid var(--border);text-align:center">
-                  <span style="color:${f.statut==='Payée'?'#68d391':f.statut==='En attente'?'#f6ad55':'#63b3ed'}">${f.statut}</span>
-                </td>
-              </tr>`).join('')}
-              <tr style="background:rgba(255,255,255,.03)">
-                <td colspan="4" style="padding:8px 12px;font-size:12px;font-weight:700;border-top:2px solid var(--border2)">Total ${d.lg.label}</td>
-                <td style="padding:8px 12px;font-size:13px;font-weight:700;text-align:right;border-top:2px solid var(--border2);color:${d.lg.color}">${fmt(d.totalFac)}</td>
-                <td style="border-top:2px solid var(--border2)"></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>`;
-    }).join('')}
-  `;
+    </div>`;
 }
+
 
 function renderRentabilite(){
   const{factures}=loadData();
@@ -3605,32 +3449,24 @@ function updateTauxAnnee(logKey,annee,value){
 }
 
 function saveFinancementCredit(){
-  const existing=loadFC();
-  const fc={};
-  const logs=getCTXConfig().logements;
-  // Clés dynamiques selon le contexte
-  const keys=CTX==='sci'?[...logs.map(l=>l.key),'Commun']:logs.map(l=>l.key);
+  const existing=loadFC();const fc={};
+  const cfg=getCTXConfig();
+  const keys=CTX==='sci'?[...cfg.logements.map(l=>l.key),'Commun']:cfg.logements.map(l=>l.key);
   keys.forEach(k=>{
-    const capital=document.getElementById('fc-capital-'+k);
-    if(!capital)return;
+    const el=id=>document.getElementById(id);
+    if(!el('fc-capital-'+k))return;
     fc[k]={
-      capital:+capital.value||0,
-      tauxType:document.getElementById('fc-tauxtype-'+k).value||'fixe',
-      taux:+document.getElementById('fc-taux-'+k).value||0,
-      duree:+document.getElementById('fc-duree-'+k).value||0,
-      debut:document.getElementById('fc-debut-'+k).value||'',
-      pno:+document.getElementById('fc-pno-'+k).value||0,
-      assuremp:+document.getElementById('fc-assuremp-'+k).value||0,
-      apport:+document.getElementById('fc-apport-'+k).value||0,
+      capital:+el('fc-capital-'+k).value||0,tauxType:el('fc-tauxtype-'+k).value||'variable',
+      taux:+el('fc-taux-'+k).value||0,duree:+el('fc-duree-'+k).value||0,
+      debut:el('fc-debut-'+k).value||'',pno:+el('fc-pno-'+k).value||0,
+      assuremp:+el('fc-assuremp-'+k).value||0,apport:+el('fc-apport-'+k).value||0,
       tauxOverrides:(existing[k]&&existing[k].tauxOverrides)||{},
     };
   });
-  const comptable=document.getElementById('fc-comptable');
-  const regime=document.getElementById('fc-regime');
-  const tauximpot=document.getElementById('fc-tauximpot');
-  if(comptable)fc.comptable=+comptable.value||0;
-  if(regime)fc.regime=regime.value;
-  if(tauximpot)fc.tauximpot=+tauximpot.value||0;
+  const g=id=>document.getElementById(id);
+  if(g('fc-comptable'))fc.comptable=+g('fc-comptable').value||0;
+  if(g('fc-regime'))fc.regime=g('fc-regime').value;
+  if(g('fc-tauximpot'))fc.tauximpot=+g('fc-tauximpot').value||0;
   saveFC(fc);
 }
 
@@ -3703,27 +3539,19 @@ function renderFinancement(){
   const fc=loadFC();
   const cfg=getCTXConfig();
   const logs=cfg.logements;
-  // En SCI : logements A/B/C + Terrain Commun. En LMNP : seulement les logements (1 et 2)
   const isSCI=CTX==='sci';
   const creditKeys=isSCI?[...logs.map(l=>l.key),'Commun']:logs.map(l=>l.key);
-
-  // ── Génération dynamique du HTML des cartes crédit ───────────────────────
   const container=document.getElementById('financement-cards-container');
   if(!container)return;
 
-  const carteCredit=k=>{
+  const carteHtml=k=>{
     const lg=logs.find(l=>l.key===k);
     const color=lg?lg.color:'#b794f4';
     const label=lg?lg.label:(k==='Commun'?'Terrain (Commun)':'Logement '+k);
-    return`<div class="log-card" style="--lc:${color}">
-      <h3>${label}</h3>
+    return`<div class="log-card" style="--lc:${color}"><h3>${label}</h3>
       <div class="form-grid" style="grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px">
         <div class="form-group"><label>Capital emprunté (€)</label><input type="number" id="fc-capital-${k}" step="1000" onchange="saveFinancementCredit();renderFinancement()"></div>
-        <div class="form-group"><label>Type de taux</label>
-          <select id="fc-tauxtype-${k}" onchange="saveFinancementCredit();renderFinancement()">
-            <option value="fixe">Fixe</option><option value="variable">Variable (révisable)</option>
-          </select>
-        </div>
+        <div class="form-group"><label>Type de taux</label><select id="fc-tauxtype-${k}" onchange="saveFinancementCredit();renderFinancement()"><option value="fixe">Fixe</option><option value="variable">Variable</option></select></div>
         <div class="form-group"><label>Taux initial (%)</label><input type="number" id="fc-taux-${k}" step="0.05" onchange="saveFinancementCredit();renderFinancement()"></div>
         <div class="form-group"><label>Durée (années)</label><input type="number" id="fc-duree-${k}" step="1" onchange="saveFinancementCredit();renderFinancement()"></div>
         <div class="form-group"><label>Date de début</label><input type="date" id="fc-debut-${k}" onchange="saveFinancementCredit();renderFinancement()"></div>
@@ -3731,7 +3559,7 @@ function renderFinancement(){
         <div class="form-group"><label>Assurance PNO (€/an)</label><input type="number" id="fc-pno-${k}" step="10" onchange="saveFinancementCredit();renderFinancement()"></div>
         <div class="form-group"><label>Assurance emprunteur (€/an)</label><input type="number" id="fc-assuremp-${k}" step="10" onchange="saveFinancementCredit();renderFinancement()"></div>
       </div>
-      <div style="display:flex;justify-content:center;align-items:center;gap:8px">
+      <div style="display:flex;justify-content:center;gap:8px">
         <input type="file" accept="image/*" capture="environment" id="fc-import-${k}" style="display:none" onchange="importCreditPhoto(event,'${k}')">
         <button class="btn btn-sm" onclick="document.getElementById('fc-import-${k}').click()">📷 Importer photo</button>
         <span id="fc-import-status-${k}" style="display:none;font-size:10px"></span>
@@ -3739,699 +3567,70 @@ function renderFinancement(){
     </div>`;
   };
 
-  const regimeFiscalLabel=isSCI?'Frais comptables &amp; fiscalité — global SCI':'Frais &amp; fiscalité — LMNP';
-  const regimeOptions=isSCI
-    ?'<option value="IR">IR (revenus fonciers)</option><option value="IS">IS (impôt sur les sociétés)</option>'
-    :'<option value="LMNP">LMNP (micro-BIC / réel)</option><option value="LMP">LMP (loueur meublé professionnel)</option>';
-
-  const amortOptions=creditKeys.map(k=>{
+  const regimeOpts=isSCI
+    ?'<option value="IR">IR (revenus fonciers)</option><option value="IS">IS (impôt sociétés)</option>'
+    :'<option value="LMNP">LMNP (micro-BIC / réel)</option><option value="LMP">LMP (professionnel)</option>';
+  const amortOpts=creditKeys.map(k=>{
     const lg=logs.find(l=>l.key===k);
-    const label=lg?lg.label:(k==='Commun'?'Terrain (commun)':'Logement '+k);
-    return`<option value="${k}">${label}</option>`;
+    return`<option value="${k}">${lg?lg.label:(k==='Commun'?'Terrain':'Log.'+k)}</option>`;
   }).join('');
 
   container.innerHTML=`
     <div class="section-title">Crédit immobilier — par logement</div>
     <div class="logements-grid" style="grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:24px">
-      ${creditKeys.map(k=>carteCredit(k)).join('')}
+      ${creditKeys.map(k=>carteHtml(k)).join('')}
     </div>
-    <div style="font-size:10px;color:var(--text3);margin:-12px 0 24px">
-      Prends en photo l'offre de prêt pour pré-remplir automatiquement les champs.
-      ${isSCI?'Le crédit "Terrain (Commun)" est réparti entre les 3 logements dans le bilan.':''}
-    </div>
-    <div class="section-title">${regimeFiscalLabel}</div>
+    <div class="section-title">${isSCI?'Frais comptables & fiscalité':'Fiscalité LMNP'}</div>
     <div class="table-wrap" style="padding:20px 24px;margin-bottom:24px">
       <div class="form-grid">
         <div class="form-group"><label>Frais comptable annuel (€)</label><input type="number" id="fc-comptable" step="10" onchange="saveFinancementCredit();renderFinancement()"></div>
-        <div class="form-group"><label>Régime fiscal</label>
-          <select id="fc-regime" onchange="saveFinancementCredit();renderFinancement()">${regimeOptions}</select>
-        </div>
+        <div class="form-group"><label>Régime fiscal</label><select id="fc-regime" onchange="saveFinancementCredit();renderFinancement()">${regimeOpts}</select></div>
         <div class="form-group"><label>Taux d'imposition estimé (%)</label><input type="number" id="fc-tauximpot" step="0.5" onchange="saveFinancementCredit();renderFinancement()"></div>
       </div>
     </div>
     <div class="kpi-grid" id="fc-kpi-grid"></div>
-    <div class="section-title">Bilan brut / net par logement — Année en cours</div>
-    <div class="table-wrap" style="overflow-x:auto;margin-bottom:24px">
-      <table class="factures-table" id="fc-bilan-table"></table>
-    </div>
+    <div class="section-title">Bilan mensuel par logement</div>
+    <div class="table-wrap" style="overflow-x:auto;margin-bottom:24px"><table class="factures-table" id="fc-bilan-table"></table></div>
     <div class="section-title">Tableau d'amortissement</div>
-    <div class="filters">
-      <select class="filter-select" id="fc-amort-select" onchange="renderFinancementAmort()">${amortOptions}</select>
-    </div>
-    <div class="table-wrap" style="overflow-x:auto;margin-bottom:24px;max-height:420px;overflow-y:auto">
-      <table class="factures-table" id="fc-amort-table"></table>
-    </div>
+    <div class="filters"><select class="filter-select" id="fc-amort-select" onchange="renderFinancementAmort()">${amortOpts}</select></div>
+    <div class="table-wrap" style="overflow-x:auto;margin-bottom:24px;max-height:420px;overflow-y:auto"><table class="factures-table" id="fc-amort-table"></table></div>
   `;
 
-  // ── Remplir les valeurs depuis loadFC() ───────────────────────────────────
+  // Remplir les valeurs
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
   creditKeys.forEach(k=>{
     const d=fc[k]||{};
-    const set=(id,val)=>{const el=document.getElementById(id);if(el)el.value=val;};
-    set('fc-capital-'+k, d.capital||'');
-    set('fc-tauxtype-'+k, d.tauxType||(k==='Commun'?'fixe':'variable'));
-    set('fc-taux-'+k, d.taux||'');
-    set('fc-duree-'+k, d.duree||'');
-    set('fc-debut-'+k, d.debut||'');
-    set('fc-pno-'+k, d.pno||'');
-    set('fc-assuremp-'+k, d.assuremp||'');
-    set('fc-apport-'+k, d.apport||'');
+    set('fc-capital-'+k,d.capital||'');set('fc-tauxtype-'+k,d.tauxType||'variable');
+    set('fc-taux-'+k,d.taux||'');set('fc-duree-'+k,d.duree||'');
+    set('fc-debut-'+k,d.debut||'');set('fc-pno-'+k,d.pno||'');
+    set('fc-assuremp-'+k,d.assuremp||'');set('fc-apport-'+k,d.apport||'');
   });
-  const set=(id,val)=>{const el=document.getElementById(id);if(el)el.value=val;};
-  set('fc-comptable', fc.comptable||'');
-  set('fc-regime', fc.regime||(isSCI?'IR':'LMNP'));
-  set('fc-tauximpot', fc.tauximpot||'');
+  set('fc-comptable',fc.comptable||'');
+  set('fc-regime',fc.regime||(isSCI?'IR':'LMNP'));
+  set('fc-tauximpot',fc.tauximpot||'');
 
-  // ── Calculs amortissements ─────────────────────────────────────────────────
-  const amorts={},curAmort={},curYear={};
-  let totalMensuelle=0,totalCapital=0,totalAssurances=0,totalApport=0;
+  // KPIs
+  let totalMens=0,totalCap=0,totalAssur=0,totalApport=0;
   creditKeys.forEach(k=>{
     const d=fc[k]||{};
-    const overrides=(d.tauxType==='variable')?(d.tauxOverrides||{}):null;
-    amorts[k]=computeAmortization(+d.capital||0,+d.taux||0,+d.duree||0,overrides);
-    curYear[k]=getCurrentLoanYear(d.debut,+d.duree||0);
-    curAmort[k]=(amorts[k].years&&amorts[k].years[curYear[k]-1])||{mensualite:amorts[k].mensualite||0,annuite:(amorts[k].mensualite||0)*12,taux:+d.taux||0};
-    totalMensuelle+=curAmort[k].mensualite||0;
-    totalCapital+=(+d.capital||0);
-    totalAssurances+=(+d.pno||0)+(+d.assuremp||0);
+    const ov=(d.tauxType==='variable')?(d.tauxOverrides||{}):null;
+    const a=computeAmortization(+d.capital||0,+d.taux||0,+d.duree||0,ov);
+    const yr=getCurrentLoanYear(d.debut,+d.duree||0);
+    const cur=(a.years&&a.years[yr-1])||{mensualite:a.mensualite||0};
+    totalMens+=cur.mensualite||0;
+    totalCap+=(+d.capital||0);
+    totalAssur+=(+d.pno||0)+(+d.assuremp||0);
     totalApport+=(+d.apport||0);
   });
-  const comptable=+fc.comptable||0;
-  const chargesFixesAnnuelles=totalAssurances+comptable;
-  const communMensualite=isSCI?(curAmort['Commun']?curAmort['Commun'].mensualite||0:0):0;
-  const communCapital=isSCI?((fc['Commun']||{}).capital||0):0;
-
-  const kpiGrid=document.getElementById('fc-kpi-grid');
-  if(kpiGrid) kpiGrid.innerHTML=`
-    <div class="kpi" style="--kpi-color:#63b3ed">
-      <div class="kpi-label">Mensualité totale crédits</div>
-      <div class="kpi-val">${fmt(totalMensuelle)}</div>
-      <div class="kpi-sub">${fmt(totalMensuelle*12)} / an${isSCI&&communMensualite?' — dont terrain : '+fmt(communMensualite):''}</div>
-    </div>
-    <div class="kpi" style="--kpi-color:#fc8181">
-      <div class="kpi-label">Assurances + comptable</div>
-      <div class="kpi-val">${fmt(chargesFixesAnnuelles)}</div>
-      <div class="kpi-sub">par an</div>
-    </div>
-    <div class="kpi" style="--kpi-color:#b794f4">
-      <div class="kpi-label">Capital emprunté total</div>
-      <div class="kpi-val">${fmt(totalCapital)}</div>
-      <div class="kpi-sub">${isSCI&&communCapital?'dont terrain : '+fmt(communCapital):logs.length+' logements'}</div>
-    </div>
-    <div class="kpi" style="--kpi-color:#68d391">
-      <div class="kpi-label">Apport total</div>
-      <div class="kpi-val">${fmt(totalApport)}</div>
-      <div class="kpi-sub">apports cumulés</div>
-    </div>
+  const kpi=document.getElementById('fc-kpi-grid');
+  if(kpi)kpi.innerHTML=`
+    <div class="kpi" style="--kpi-color:#63b3ed"><div class="kpi-label">Mensualité totale</div><div class="kpi-val">${fmt(totalMens)}</div><div class="kpi-sub">${fmt(totalMens*12)} / an</div></div>
+    <div class="kpi" style="--kpi-color:#fc8181"><div class="kpi-label">Assurances annuelles</div><div class="kpi-val">${fmt(totalAssur)}</div><div class="kpi-sub">PNO + emprunteur</div></div>
+    <div class="kpi" style="--kpi-color:#b794f4"><div class="kpi-label">Capital total emprunté</div><div class="kpi-val">${fmt(totalCap)}</div><div class="kpi-sub">${logs.length} logement(s)</div></div>
+    <div class="kpi" style="--kpi-color:#68d391"><div class="kpi-label">Apport total</div><div class="kpi-val">${fmt(totalApport)}</div><div class="kpi-sub">apports cumulés</div></div>
   `;
 
-  // ── Bilan par logement ────────────────────────────────────────────────────
-  const{factures}=loadData();
-  const locs=loadLocataires();
-  const bilanTable=document.getElementById('fc-bilan-table');
-  if(bilanTable){
-    // Loyers mensuels par logement
-    const loyerParLog={};
-    logs.forEach(lg=>{
-      const actifs=locs.filter(l=>l.logement===lg.key&&isLocataireActifAt(l,todayStr()));
-      loyerParLog[lg.key]=actifs.reduce((s,l)=>(+l.loyerHC||0)+(+l.charges||0)+s,0);
-    });
-    // Partage du Commun entre les logements SCI
-    const nLogs=logs.length;
-    const communMens=communMensualite/nLogs;
-    const communAssur=isSCI?((+((fc['Commun']||{}).pno)||0)+(+((fc['Commun']||{}).assuremp)||0))/nLogs:0;
-
-    const headerCols=logs.map(lg=>`<th style="text-align:right;color:${lg.color}">${lg.label}</th>`).join('')+'<th style="text-align:right">Total</th>';
-    const rows=[];
-    // Loyer HC
-    const totalLoyer=logs.reduce((s,lg)=>s+(loyerParLog[lg.key]||0),0);
-    rows.push(['Loyer + charges (mensuel)',logs.map(lg=>`<td style="text-align:right">${fmt(loyerParLog[lg.key]||0)}</td>`).join(''),`<td style="text-align:right;font-weight:700">${fmt(totalLoyer)}</td>`,'revenue']);
-    // Mensualité crédit
-    const mensByLog={};
-    logs.forEach(lg=>{mensByLog[lg.key]=(curAmort[lg.key]?curAmort[lg.key].mensualite||0:0)+(isSCI?communMens:0);});
-    const totalMens=Object.values(mensByLog).reduce((s,v)=>s+v,0);
-    rows.push(['Mensualité crédit',logs.map(lg=>`<td style="text-align:right;color:#fc8181">${fmt(mensByLog[lg.key])}</td>`).join(''),`<td style="text-align:right;font-weight:700;color:#fc8181">${fmt(totalMens)}</td>`,'charge']);
-    // Assurances
-    const assurByLog={};
-    logs.forEach(lg=>{assurByLog[lg.key]=((+(fc[lg.key]||{}).pno||0)+(+(fc[lg.key]||{}).assuremp||0))/12+communAssur;});
-    const totalAssur=Object.values(assurByLog).reduce((s,v)=>s+v,0);
-    rows.push(['Assurances (mensuel)',logs.map(lg=>`<td style="text-align:right;color:#f6ad55">${fmt(assurByLog[lg.key])}</td>`).join(''),`<td style="text-align:right;font-weight:700;color:#f6ad55">${fmt(totalAssur)}</td>`,'charge']);
-    // Cash flow
-    const cfByLog={};
-    logs.forEach(lg=>{cfByLog[lg.key]=(loyerParLog[lg.key]||0)-mensByLog[lg.key]-assurByLog[lg.key];});
-    const totalCF=Object.values(cfByLog).reduce((s,v)=>s+v,0);
-    rows.push(['Cash flow mensuel',logs.map(lg=>{const v=cfByLog[lg.key];return`<td style="text-align:right;font-weight:700;color:${v>=0?'#68d391':'#fc8181'}">${fmt(v)}</td>`;}).join(''),`<td style="text-align:right;font-weight:700;color:${totalCF>=0?'#68d391':'#fc8181'}">${fmt(totalCF)}</td>`,'total']);
-
-    bilanTable.innerHTML=`<thead><tr><th></th>${headerCols}</tr></thead><tbody>`
-      +rows.map(([label,cells,total,type])=>`<tr${type==='total'?` style="background:rgba(255,255,255,.04);border-top:2px solid var(--border2)"`:''}><td style="font-size:11px;color:var(--text2);padding:8px 12px">${label}</td>${cells}${total}</tr>`).join('')
-      +'</tbody>';
-  }
-
-  // ── Tableau amortissement ─────────────────────────────────────────────────
   renderFinancementAmort();
-}
-
-function renderFinancementAmort(){
-  const fc=loadFC();
-  const sel=document.getElementById('fc-amort-select');
-  if(!sel)return;
-  const selK=sel.value;
-  const d=fc[selK]||{};
-  const overrides=(d.tauxType==='variable')?(d.tauxOverrides||{}):null;
-  const amort=computeAmortization(+d.capital||0,+d.taux||0,+d.duree||0,overrides);
-  const curYr=getCurrentLoanYear(d.debut,+d.duree||0);
-  const amortTable=document.getElementById('fc-amort-table');
-  if(!amortTable)return;
-  if(!amort.years||!amort.years.length){amortTable.innerHTML='<tr><td style="padding:20px;color:var(--text3);text-align:center">Renseigne le capital, taux et durée pour voir le tableau.</td></tr>';return;}
-  amortTable.innerHTML=`<thead><tr>
-    <th>Année</th><th style="text-align:right">Taux</th>
-    <th style="text-align:right">Mensualité</th><th style="text-align:right">Intérêts</th>
-    <th style="text-align:right">Capital remb.</th><th style="text-align:right">Capital restant</th>
-  </tr></thead><tbody>`
-  +amort.years.map((y,i)=>{
-    const isCurrentYear=i+1===curYr;
-    const tauxOverrideKey=d.debut?(new Date(d.debut).getFullYear()+i).toString():'';
-    const tauxOverride=overrides&&tauxOverrideKey&&overrides[tauxOverrideKey]?overrides[tauxOverrideKey]:null;
-    return`<tr${isCurrentYear?' style="background:rgba(99,179,237,.08)"':''}>
-      <td style="font-size:11px${isCurrentYear?';font-weight:700;color:#63b3ed':''}">Année ${i+1}${isCurrentYear?' ◀':''}${d.debut?' ('+(new Date(d.debut).getFullYear()+i)+')':''}</td>
-      <td style="text-align:right;font-size:11px">
-        ${d.tauxType==='variable'&&tauxOverrideKey?`<input type="number" step="0.05" value="${tauxOverride||y.taux}" style="width:60px;background:var(--bg3);border:1px solid var(--border2);border-radius:4px;padding:2px 5px;color:var(--text);font-size:10px;text-align:right" onchange="(()=>{const fc=loadFC();if(!fc['${selK}'])fc['${selK}']={};if(!fc['${selK}'].tauxOverrides)fc['${selK}'].tauxOverrides={};fc['${selK}'].tauxOverrides['${tauxOverrideKey}']=+this.value;saveFC(fc);renderFinancementAmort();})()">`:`${y.taux.toFixed(2)} %`}
-      </td>
-      <td style="text-align:right;font-size:11px">${fmt(y.mensualite)}</td>
-      <td style="text-align:right;font-size:11px;color:#fc8181">${fmt(y.interets)}</td>
-      <td style="text-align:right;font-size:11px;color:#68d391">${fmt(y.capitalRembourse)}</td>
-      <td style="text-align:right;font-size:11px">${fmt(y.capitalRestant)}</td>
-    </tr>`;
-  }).join('')+'</tbody>';
-}
-
-function renderRentabilite(){
-  const{factures}=loadData();
-  const locs=loadLocataires();
-  const yearSel=document.getElementById('rent-year-select');
-  const now=new Date();
-  const curYear=now.getFullYear();
-  const years=new Set([curYear-1,curYear,curYear+1]);
-  factures.forEach(f=>{if(f.date)years.add(+f.date.slice(0,4));});
-  locs.forEach(l=>{
-    if(l.dateEntree)years.add(+l.dateEntree.slice(0,4));
-    if(l.dateSortie)years.add(+l.dateSortie.slice(0,4));
-  });
-  const sortedYears=[...years].sort((a,b)=>a-b);
-  const prevVal=yearSel.value;
-  yearSel.innerHTML=sortedYears.map(y=>`<option value="${y}">${y}</option>`).join('');
-  yearSel.value=(prevVal&&sortedYears.includes(+prevVal))?prevVal:String(curYear);
-  const year=+yearSel.value;
-
-  const loyers=getLoyersByLogementYear(locs,year);
-  const charges=getReelTotalsByYear(factures,year);
-
-  let totalEnc=0,totalDu=0,totalCharges=0,occSum=0;
-  ['A','B','C'].forEach(k=>{
-    totalEnc+=loyers[k].encaisse;
-    totalDu+=loyers[k].du;
-    totalCharges+=charges['Logement '+k]||0;
-    const{occupied,total}=getOccupationYear(k,year);
-    occSum+=occupied/total;
-  });
-  const cashflow=totalEnc-totalCharges;
-  const occPct=Math.round(occSum/3*100);
-
-  document.getElementById('rent-kpi-grid').innerHTML=`
-    <div class="kpi" style="--kpi-color:#63b3ed">
-      <div class="kpi-label">Loyers encaissés ${year}</div>
-      <div class="kpi-val">${fmt(totalEnc)}</div>
-      <div class="kpi-sub">sur ${fmt(totalDu)} dus</div>
-    </div>
-    <div class="kpi" style="--kpi-color:#fc8181">
-      <div class="kpi-label">Charges réelles ${year}</div>
-      <div class="kpi-val">${fmt(totalCharges)}</div>
-      <div class="kpi-sub">factures incluses au projet</div>
-    </div>
-    <div class="kpi" style="--kpi-color:${cashflow>=0?'#68d391':'#fc8181'}">
-      <div class="kpi-label">Cash-flow net ${year}</div>
-      <div class="kpi-val">${fmtE(cashflow)}</div>
-      <div class="kpi-sub">loyers encaissés − charges</div>
-    </div>
-    <div class="kpi" style="--kpi-color:#b794f4">
-      <div class="kpi-label">Taux d'occupation</div>
-      <div class="kpi-val">${occPct}%</div>
-      <div class="kpi-sub">moyenne ${year}</div>
-    </div>`;
-
-  // Tableau par logement
-  let rows='';
-  ['A','B','C'].forEach(k=>{
-    const enc=loyers[k].encaisse, du=loyers[k].du, ch=charges['Logement '+k]||0;
-    const cf=enc-ch;
-    const{occupied,total}=getOccupationYear(k,year);
-    rows+=`<tr>
-      <td><span class="log-badge log-${k.toLowerCase()}">Logement ${k}</span></td>
-      <td style="text-align:right" class="amount">${fmt(enc)}</td>
-      <td style="text-align:right" class="amount prev">${fmt(du)}</td>
-      <td style="text-align:right" class="amount">${fmt(ch)}</td>
-      <td style="text-align:right" class="ecart ${cf>=0?'ok':'over'}">${fmtE(cf)}</td>
-      <td style="text-align:right">${total?Math.round(occupied/total*100):0}%</td>
-    </tr>`;
-  });
-  rows+=`<tr style="font-weight:600;background:rgba(99,179,237,0.08)">
-    <td>Total</td>
-    <td style="text-align:right" class="amount">${fmt(totalEnc)}</td>
-    <td style="text-align:right" class="amount prev">${fmt(totalDu)}</td>
-    <td style="text-align:right" class="amount">${fmt(totalCharges)}</td>
-    <td style="text-align:right" class="ecart ${cashflow>=0?'ok':'over'}">${fmtE(cashflow)}</td>
-    <td style="text-align:right">${occPct}%</td>
-  </tr>`;
-  document.getElementById('rent-table').innerHTML=`<thead><tr>
-    <th>Logement</th><th style="text-align:right">Loyers encaissés</th><th style="text-align:right">Loyers dus</th>
-    <th style="text-align:right">Charges réelles</th><th style="text-align:right">Cash-flow</th><th style="text-align:right">Occupation</th>
-  </tr></thead><tbody>${rows}</tbody>`;
-
-  // Graphique cash-flow mensuel
-  const loyersMonth=getLoyersEncaissesByMonth(locs,year);
-  const chargesMonth=getChargesByMonth(factures,year);
-  const monthsLabels=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
-  chartRentCashflow=destroyChart(chartRentCashflow);
-  chartRentCashflow=new Chart(document.getElementById('chart-rent-cashflow'),{
-    type:'bar',
-    data:{labels:monthsLabels,datasets:[
-      {label:'Loyers encaissés',data:loyersMonth,backgroundColor:'#68d391'},
-      {label:'Charges réelles',data:chargesMonth,backgroundColor:'#fc8181'}
-    ]},
-    options:{responsive:true,maintainAspectRatio:false,
-      scales:{
-        y:{beginAtZero:true,ticks:{color:'#94a3b8'},grid:{color:'rgba(255,255,255,.05)'}},
-        x:{ticks:{color:'#94a3b8'},grid:{display:false}}
-      },
-      plugins:{legend:{labels:{color:'#e2e8f0'}}}
-    }
-  });
-}
-
-// ── PROJECTION ────────────────────────────────────────────────────────────
-function applyProjScenario(name){
-  const s=PROJ_SCENARIOS[name];
-  if(!s)return;
-  document.getElementById('proj-taux-loyer').value=s.tauxLoyer;
-  document.getElementById('proj-vacance').value=s.vacance;
-  document.getElementById('proj-taux-charges').value=s.tauxCharges;
-  saveProjectionParams();
-  renderProjection();
-}
-function saveProjectionParams(){
-  const p={
-    loyerRef:+document.getElementById('proj-loyer').value||0,
-    chargesRef:+document.getElementById('proj-charges').value||0,
-    tauxLoyer:+document.getElementById('proj-taux-loyer').value||0,
-    vacance:+document.getElementById('proj-vacance').value||0,
-    tauxCharges:+document.getElementById('proj-taux-charges').value||0
-  };
-  saveProjection(p);
-}
-function renderProjection(){
-  let p=loadProjection();
-  if(!p){
-    // Valeurs par défaut calculées depuis les données existantes
-    const loyerRef=LOC_LOGEMENTS.reduce((s,lg)=>{
-      const c=getCurrentLocataire(lg.key);
-      return s+((c&&isLocataireActifAt(c,todayStr()))?(+c.loyerHC||0)+(+c.charges||0):0);
-    },0);
-    const{factures}=loadData();
-    const curYear=new Date().getFullYear();
-    const chBy=getReelTotalsByYear(factures,curYear);
-    const chargesRef=(chBy['Logement A']||0)+(chBy['Logement B']||0)+(chBy['Logement C']||0);
-    p={loyerRef:Math.round(loyerRef),chargesRef:Math.round(chargesRef),tauxLoyer:1.5,vacance:5,tauxCharges:2};
-  }
-  document.getElementById('proj-loyer').value=p.loyerRef;
-  document.getElementById('proj-charges').value=p.chargesRef;
-  document.getElementById('proj-taux-loyer').value=p.tauxLoyer;
-  document.getElementById('proj-vacance').value=p.vacance;
-  document.getElementById('proj-taux-charges').value=p.tauxCharges;
-
-  const loyerMensuel=+p.loyerRef||0;
-  const chargesAnn=+p.chargesRef||0;
-  const tauxLoyer=(+p.tauxLoyer||0)/100;
-  const vacance=(+p.vacance||0)/100;
-  const tauxCharges=(+p.tauxCharges||0)/100;
-
-  let cumul=0;
-  const rows=[];
-  for(let y=1;y<=20;y++){
-    const loyersBruts=loyerMensuel*12*Math.pow(1+tauxLoyer,y-1);
-    const loyersNets=loyersBruts*(1-vacance);
-    const charges=chargesAnn*Math.pow(1+tauxCharges,y-1);
-    const cf=loyersNets-charges;
-    cumul+=cf;
-    rows.push({y,loyersBruts,loyersNets,charges,cf,cumul});
-  }
-
-  const r5=rows[4],r10=rows[9],r15=rows[14],r20=rows[19];
-  document.getElementById('proj-kpi-grid').innerHTML=`
-    <div class="kpi" style="--kpi-color:#63b3ed">
-      <div class="kpi-label">Cash-flow net — Année 1</div>
-      <div class="kpi-val">${fmtE(rows[0].cf)}</div>
-      <div class="kpi-sub">loyers nets − charges</div>
-    </div>
-    <div class="kpi" style="--kpi-color:${r5.cumul>=0?'#68d391':'#fc8181'}">
-      <div class="kpi-label">Cumulé à 5 ans</div>
-      <div class="kpi-val">${fmtE(r5.cumul)}</div>
-    </div>
-    <div class="kpi" style="--kpi-color:${r10.cumul>=0?'#68d391':'#fc8181'}">
-      <div class="kpi-label">Cumulé à 10 ans</div>
-      <div class="kpi-val">${fmtE(r10.cumul)}</div>
-    </div>
-    <div class="kpi" style="--kpi-color:${r20.cumul>=0?'#68d391':'#fc8181'}">
-      <div class="kpi-label">Cumulé à 20 ans</div>
-      <div class="kpi-val">${fmtE(r20.cumul)}</div>
-    </div>`;
-
-  // Tableau — toutes les années, avec mise en avant 5/10/15/20
-  let body='';
-  rows.forEach(r=>{
-    const highlight=[5,10,15,20].includes(r.y);
-    body+=`<tr${highlight?' style="font-weight:600;background:rgba(99,179,237,0.06)"':''}>
-      <td>Année ${r.y}</td>
-      <td style="text-align:right" class="amount">${fmt(r.loyersBruts)}</td>
-      <td style="text-align:right" class="amount">${fmt(r.loyersNets)}</td>
-      <td style="text-align:right" class="amount">${fmt(r.charges)}</td>
-      <td style="text-align:right" class="ecart ${r.cf>=0?'ok':'over'}">${fmtE(r.cf)}</td>
-      <td style="text-align:right" class="ecart ${r.cumul>=0?'ok':'over'}">${fmtE(r.cumul)}</td>
-    </tr>`;
-  });
-  document.getElementById('proj-table').innerHTML=`<thead><tr>
-    <th>Année</th><th style="text-align:right">Loyers bruts</th><th style="text-align:right">Loyers nets (vacance)</th>
-    <th style="text-align:right">Charges</th><th style="text-align:right">Cash-flow annuel</th><th style="text-align:right">Cash-flow cumulé</th>
-  </tr></thead><tbody>${body}</tbody>`;
-
-  // Graphique cash-flow cumulé
-  chartProjection=destroyChart(chartProjection);
-  chartProjection=new Chart(document.getElementById('chart-projection'),{
-    type:'line',
-    data:{labels:rows.map(r=>'A'+r.y),datasets:[
-      {label:'Cash-flow cumulé',data:rows.map(r=>r.cumul),borderColor:'#63b3ed',backgroundColor:'rgba(99,179,237,.15)',fill:true,tension:.3},
-      {label:'Cash-flow annuel',data:rows.map(r=>r.cf),borderColor:'#68d391',backgroundColor:'rgba(104,211,145,.1)',fill:false,tension:.3}
-    ]},
-    options:{responsive:true,maintainAspectRatio:false,
-      scales:{
-        y:{ticks:{color:'#94a3b8'},grid:{color:'rgba(255,255,255,.05)'}},
-        x:{ticks:{color:'#94a3b8'},grid:{display:false}}
-      },
-      plugins:{legend:{labels:{color:'#e2e8f0'}}}
-    }
-  });
-}
-
-// ── FINANCEMENT (crédit, assurances, comptable, impôts) ────────────────────
-// Calcule le tableau d'amortissement annuel d'un prêt.
-// tauxOverrides : {année: taux%} — permet de gérer un prêt à taux variable révisable
-// chaque année (la mensualité est recalculée sur le capital restant et la durée restante).
-function computeAmortization(capital,tauxAnnuelInitial,dureeAnnees,tauxOverrides){
-  if(!capital||!dureeAnnees)return{mensualite:0,years:[]};
-  tauxOverrides=tauxOverrides||{};
-  let solde=capital;
-  let tauxCourant=+tauxAnnuelInitial||0;
-  const years=[];
-  let mensualiteInitiale=0;
-  for(let y=1;y<=dureeAnnees;y++){
-    if(tauxOverrides[y]!==undefined&&tauxOverrides[y]!=='')tauxCourant=+tauxOverrides[y];
-    const r=tauxCourant/100/12;
-    const moisRestants=Math.round((dureeAnnees-y+1)*12);
-    const mensualite=r>0?(solde*r)/(1-Math.pow(1+r,-moisRestants)):solde/moisRestants;
-    if(y===1)mensualiteInitiale=mensualite;
-    let interetsAnnee=0,capitalAnnee=0;
-    for(let m=1;m<=12;m++){
-      if(solde<=0)break;
-      const interet=solde*r;
-      let principal=mensualite-interet;
-      if(principal>solde)principal=solde;
-      solde-=principal;
-      interetsAnnee+=interet;
-      capitalAnnee+=principal;
-    }
-    years.push({annee:y,taux:tauxCourant,mensualite,annuite:interetsAnnee+capitalAnnee,interets:interetsAnnee,capital:capitalAnnee,solde:Math.max(0,solde)});
-  }
-  return{mensualite:mensualiteInitiale,years};
-}
-
-// Détermine l'année de prêt en cours (1 = première année) à partir de la date de début
-function getCurrentLoanYear(dateDebut,duree){
-  if(!dateDebut)return 1;
-  const start=new Date(dateDebut+'T00:00:00');
-  const now=new Date();
-  let diff=now.getFullYear()-start.getFullYear();
-  if(now.getMonth()<start.getMonth()||(now.getMonth()===start.getMonth()&&now.getDate()<start.getDate()))diff--;
-  let y=diff+1;
-  if(y<1)y=1;
-  if(duree&&y>duree)y=duree;
-  return y;
-}
-
-// Met à jour le taux d'une année donnée pour un prêt à taux variable
-function updateTauxAnnee(logKey,annee,value){
-  const fc=loadFC();
-  if(!fc[logKey])fc[logKey]={};
-  if(!fc[logKey].tauxOverrides)fc[logKey].tauxOverrides={};
-  fc[logKey].tauxOverrides[annee]=+value||0;
-  saveFC(fc);
-  renderFinancement();
-}
-
-function saveFinancementCredit(){
-  const existing=loadFC();
-  const fc={};
-  const logs=getCTXConfig().logements;
-  // Clés dynamiques selon le contexte
-  const keys=CTX==='sci'?[...logs.map(l=>l.key),'Commun']:logs.map(l=>l.key);
-  keys.forEach(k=>{
-    const capital=document.getElementById('fc-capital-'+k);
-    if(!capital)return;
-    fc[k]={
-      capital:+capital.value||0,
-      tauxType:document.getElementById('fc-tauxtype-'+k).value||'fixe',
-      taux:+document.getElementById('fc-taux-'+k).value||0,
-      duree:+document.getElementById('fc-duree-'+k).value||0,
-      debut:document.getElementById('fc-debut-'+k).value||'',
-      pno:+document.getElementById('fc-pno-'+k).value||0,
-      assuremp:+document.getElementById('fc-assuremp-'+k).value||0,
-      apport:+document.getElementById('fc-apport-'+k).value||0,
-      tauxOverrides:(existing[k]&&existing[k].tauxOverrides)||{},
-    };
-  });
-  const comptable=document.getElementById('fc-comptable');
-  const regime=document.getElementById('fc-regime');
-  const tauximpot=document.getElementById('fc-tauximpot');
-  if(comptable)fc.comptable=+comptable.value||0;
-  if(regime)fc.regime=regime.value;
-  if(tauximpot)fc.tauximpot=+tauximpot.value||0;
-  saveFC(fc);
-}
-
-// Import des paramètres d'un crédit depuis une photo (offre de prêt / tableau d'amortissement)
-function importCreditPhoto(event,logKey){
-  const file=event.target.files[0];
-  if(!file)return;
-  const reader=new FileReader();
-  reader.onload=function(){
-    analyzeCreditPhoto(reader.result,logKey);
-    event.target.value='';
-  };
-  reader.readAsDataURL(file);
-}
-
-async function analyzeCreditPhoto(b64,logKey){
-  const status=document.getElementById('fc-import-status-'+logKey);
-  if(status){status.style.display='inline';status.style.color='var(--text2)';status.textContent='⏳ Analyse en cours...';}
-  try{
-    const base64Data=b64.split(',')[1];
-    const mimeType=b64.split(';')[0].replace('data:','')||'image/jpeg';
-    const resp=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=AQ.Ab8RN6KcG7Ku9m6mmYGznkS0llGlWvwk5KLwONKckxEpRmjvqQ',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        contents:[{
-          parts:[
-            {inline_data:{mime_type:mimeType,data:base64Data}},
-            {text:`Analyse cette photo d'une offre de prêt immobilier ou d'un tableau d'amortissement et extrais les informations. Réponds UNIQUEMENT en JSON valide, sans markdown ni texte autour :
-{"capital":0,"taux":0,"duree":0,"dateDebut":"YYYY-MM-DD","assuranceEmprunteur":0}
-Règles : capital = montant total emprunté en euros (nombre, sans espace ni symbole). taux = taux d'intérêt nominal annuel en pourcentage (nombre, ex: 3.45). duree = durée totale du prêt en années (nombre entier, convertis les mois en années si besoin). dateDebut = date de la première échéance ou de début du prêt au format YYYY-MM-DD si visible, sinon chaîne vide. assuranceEmprunteur = coût annuel de l'assurance emprunteur en euros si visible (multiplie par 12 si seul le montant mensuel est indiqué), sinon 0. Si une information est absente ou illisible, mets 0 ou chaîne vide.`}
-          ]
-        }],
-        generationConfig:{temperature:0,maxOutputTokens:300}
-      })
-    });
-    const data=await resp.json();
-    if(data.error)throw new Error(data.error.message||'Erreur API');
-    const text=data.candidates?.[0]?.content?.parts?.[0]?.text||'';
-    if(!text)throw new Error('Réponse vide');
-    const clean=text.replace(/```json|```/g,'').trim();
-    const info=JSON.parse(clean);
-
-    if(info.capital)document.getElementById('fc-capital-'+logKey).value=info.capital;
-    if(info.taux)document.getElementById('fc-taux-'+logKey).value=info.taux;
-    if(info.duree)document.getElementById('fc-duree-'+logKey).value=info.duree;
-    if(info.dateDebut)document.getElementById('fc-debut-'+logKey).value=info.dateDebut;
-    if(info.assuranceEmprunteur)document.getElementById('fc-assuremp-'+logKey).value=info.assuranceEmprunteur;
-
-    saveFinancementCredit();
-    renderFinancement();
-    const statusEl=document.getElementById('fc-import-status-'+logKey);
-    if(statusEl){
-      statusEl.style.color='var(--green)';
-      statusEl.textContent='✓ Importé — vérifie les valeurs';
-      setTimeout(()=>{statusEl.style.display='none';},4000);
-    }
-  }catch(e){
-    const statusEl=document.getElementById('fc-import-status-'+logKey);
-    if(statusEl){
-      statusEl.style.color='var(--red)';
-      statusEl.textContent='✗ '+e.message;
-      setTimeout(()=>{statusEl.style.display='none';},5000);
-    }
-    console.error('Import crédit error:',e);
-  }
-}
-
-function renderFinancement(){
-  const fc=loadFC();
-
-  ['A','B','C','Commun'].forEach(k=>{
-    const d=fc[k]||{};
-    document.getElementById('fc-capital-'+k).value=d.capital||'';
-    document.getElementById('fc-tauxtype-'+k).value=d.tauxType||(k==='Commun'?'fixe':'variable');
-    document.getElementById('fc-taux-'+k).value=d.taux||'';
-    document.getElementById('fc-duree-'+k).value=d.duree||'';
-    document.getElementById('fc-debut-'+k).value=d.debut||'';
-    document.getElementById('fc-pno-'+k).value=d.pno||'';
-    document.getElementById('fc-assuremp-'+k).value=d.assuremp||'';
-    document.getElementById('fc-apport-'+k).value=d.apport||'';
-  });
-  document.getElementById('fc-comptable').value=fc.comptable||'';
-  document.getElementById('fc-regime').value=fc.regime||'IR';
-  document.getElementById('fc-tauximpot').value=fc.tauximpot||'';
-
-  // Amortissements (A, B, C + Commun = crédit terrain) + année de prêt en cours
-  const amorts={},curAmort={},curYear={};
-  let totalMensuelle=0,totalCapital=0,totalAssurances=0,totalApport=0;
-  ['A','B','C','Commun'].forEach(k=>{
-    const d=fc[k]||{};
-    const overrides=(d.tauxType==='variable')?(d.tauxOverrides||{}):null;
-    amorts[k]=computeAmortization(+d.capital||0,+d.taux||0,+d.duree||0,overrides);
-    curYear[k]=getCurrentLoanYear(d.debut,+d.duree||0);
-    curAmort[k]=(amorts[k].years&&amorts[k].years[curYear[k]-1])||{mensualite:amorts[k].mensualite||0,annuite:(amorts[k].mensualite||0)*12,taux:+d.taux||0};
-    totalMensuelle+=curAmort[k].mensualite||0;
-    totalCapital+=(+d.capital||0);
-    totalAssurances+=(+d.pno||0)+(+d.assuremp||0);
-    totalApport+=(+d.apport||0);
-  });
-  const comptable=+fc.comptable||0;
-  const chargesFixesAnnuelles=totalAssurances+comptable;
-
-  document.getElementById('fc-kpi-grid').innerHTML=`
-    <div class="kpi" style="--kpi-color:#63b3ed">
-      <div class="kpi-label">Mensualité totale crédits</div>
-      <div class="kpi-val">${fmt(totalMensuelle)}</div>
-      <div class="kpi-sub">${fmt(totalMensuelle*12)} / an — dont terrain : ${fmt(curAmort['Commun'].mensualite||0)}</div>
-    </div>
-    <div class="kpi" style="--kpi-color:#fc8181">
-      <div class="kpi-label">Assurances + comptable</div>
-      <div class="kpi-val">${fmt(chargesFixesAnnuelles)}</div>
-      <div class="kpi-sub">par an</div>
-    </div>
-    <div class="kpi" style="--kpi-color:#b794f4">
-      <div class="kpi-label">Capital emprunté total</div>
-      <div class="kpi-val">${fmt(totalCapital)}</div>
-      <div class="kpi-sub">dont terrain : ${fmt((fc['Commun']||{}).capital||0)}</div>
-    </div>
-    <div class="kpi" style="--kpi-color:#68d391">
-      <div class="kpi-label">Apport total investi</div>
-      <div class="kpi-val">${fmt(totalApport)}</div>
-      <div class="kpi-sub">régime ${fc.regime||'IR'} — taux ${fc.tauximpot||0}%</div>
-    </div>`;
-
-  // Bilan brut/net par logement (année en cours)
-  const locs=loadLocataires();
-  const{factures}=loadData();
-  const year=new Date().getFullYear();
-  const loyers=getLoyersByLogementYear(locs,year);
-  const charges=getReelTotalsByYear(factures,year);
-  const tauxImpot=(+fc.tauximpot||0)/100;
-
-  // Crédit terrain (Commun) réparti à parts égales entre les 3 logements
-  const creditCommunAnnuel=curAmort['Commun'].annuite||0;
-  const dCommun=fc['Commun']||{};
-  const fixesCommun=(+dCommun.pno||0)+(+dCommun.assuremp||0);
-
-  let rows='';
-  const gT={enc:0,ch:0,brut:0,credit:0,fixes:0,net1:0,impot:0,net2:0};
-  ['A','B','C'].forEach(k=>{
-    const enc=loyers[k].encaisse;
-    const ch=charges['Logement '+k]||0;
-    const brut=enc-ch;
-    const credit=(curAmort[k].annuite||0)+creditCommunAnnuel/3;
-    const d=fc[k]||{};
-    const fixes=(+d.pno||0)+(+d.assuremp||0)+(comptable/3)+(fixesCommun/3);
-    const net1=brut-credit-fixes;
-    const impot=net1>0?net1*tauxImpot:0;
-    const net2=net1-impot;
-    gT.enc+=enc;gT.ch+=ch;gT.brut+=brut;gT.credit+=credit;gT.fixes+=fixes;gT.net1+=net1;gT.impot+=impot;gT.net2+=net2;
-    rows+=`<tr>
-      <td><span class="log-badge log-${k.toLowerCase()}">Logement ${k}</span></td>
-      <td style="text-align:right" class="amount">${fmt(enc)}</td>
-      <td style="text-align:right" class="amount">${fmt(ch)}</td>
-      <td style="text-align:right" class="ecart ${brut>=0?'ok':'over'}">${fmtE(brut)}</td>
-      <td style="text-align:right" class="amount">${fmt(credit)}</td>
-      <td style="text-align:right" class="amount">${fmt(fixes)}</td>
-      <td style="text-align:right" class="ecart ${net1>=0?'ok':'over'}">${fmtE(net1)}</td>
-      <td style="text-align:right" class="amount">${fmt(impot)}</td>
-      <td style="text-align:right" class="ecart ${net2>=0?'ok':'over'}">${fmtE(net2)}</td>
-    </tr>`;
-  });
-  rows+=`<tr style="font-weight:600;background:rgba(99,179,237,0.08)">
-    <td>Total</td>
-    <td style="text-align:right" class="amount">${fmt(gT.enc)}</td>
-    <td style="text-align:right" class="amount">${fmt(gT.ch)}</td>
-    <td style="text-align:right" class="ecart ${gT.brut>=0?'ok':'over'}">${fmtE(gT.brut)}</td>
-    <td style="text-align:right" class="amount">${fmt(gT.credit)}</td>
-    <td style="text-align:right" class="amount">${fmt(gT.fixes)}</td>
-    <td style="text-align:right" class="ecart ${gT.net1>=0?'ok':'over'}">${fmtE(gT.net1)}</td>
-    <td style="text-align:right" class="amount">${fmt(gT.impot)}</td>
-    <td style="text-align:right" class="ecart ${gT.net2>=0?'ok':'over'}">${fmtE(gT.net2)}</td>
-  </tr>`;
-  document.getElementById('fc-bilan-table').innerHTML=`<thead><tr>
-    <th>Logement</th><th style="text-align:right">Loyers encaissés</th><th style="text-align:right">Charges réelles</th><th style="text-align:right">Net brut</th>
-    <th style="text-align:right">Crédit annuel</th><th style="text-align:right">Assur. + compta</th><th style="text-align:right">Net avant impôt</th>
-    <th style="text-align:right">Impôt estimé</th><th style="text-align:right">Net après impôt</th>
-  </tr></thead><tbody>${rows}</tbody>`;
-
-  // Tableau d'amortissement du logement sélectionné
-  const sel=document.getElementById('fc-amort-select');
-  const selK=sel.value||'A';
-  const am=amorts[selK];
-  const dSel=fc[selK]||{};
-  const isVariable=dSel.tauxType==='variable';
-  if(am.years&&am.years.length){
-    let amBody='';
-    am.years.forEach(y=>{
-      const isCurrent=y.annee===curYear[selK];
-      const tauxCell=isVariable
-        ? `<input type="number" step="0.05" value="${y.taux.toFixed(2)}" style="width:64px;background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:3px 6px;color:var(--accent);font-size:11px;text-align:right;font-family:var(--font)" onchange="updateTauxAnnee('${selK}',${y.annee},this.value)">`
-        : `${y.taux.toFixed(2)}%`;
-      amBody+=`<tr${isCurrent?' class="row-alert-warn"':''}>
-        <td>Année ${y.annee}${isCurrent?' <span style="color:var(--orange);font-size:10px">(en cours)</span>':''}</td>
-        <td style="text-align:right">${tauxCell}</td>
-        <td style="text-align:right" class="amount">${fmt(y.mensualite)}</td>
-        <td style="text-align:right" class="amount">${fmt(y.annuite)}</td>
-        <td style="text-align:right" class="amount">${fmt(y.interets)}</td>
-        <td style="text-align:right" class="amount">${fmt(y.capital)}</td>
-        <td style="text-align:right" class="amount">${fmt(y.solde)}</td>
-      </tr>`;
-    });
-    document.getElementById('fc-amort-table').innerHTML=`<thead><tr>
-      <th>Période</th><th style="text-align:right">Taux</th><th style="text-align:right">Mensualité</th><th style="text-align:right">Annuité</th>
-      <th style="text-align:right">Intérêts</th><th style="text-align:right">Capital remboursé</th><th style="text-align:right">Capital restant dû</th>
-    </tr></thead><tbody>${amBody}</tbody>`;
-  }else{
-    document.getElementById('fc-amort-table').innerHTML=`<tbody><tr><td><div class="empty-state">Renseigne le capital, le taux et la durée pour "${selK==='Commun'?'Terrain (commun)':'Logement '+selK}"</div></td></tr></tbody>`;
-  }
 }
 
 function openLocModal(id,logKeyDefault){
@@ -5205,7 +4404,6 @@ function checkAuth(){
       return true;
     }
   }catch(e){}
-  document.getElementById('login-screen').style.display='flex';
   return false;
 }
 
@@ -5262,14 +4460,13 @@ const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file https://www.goog
 let driveAccessToken = null;
 
 function initGoogleDrive(){
-  const tokenKey = CTX+'_drive_token';
-  const expiryKey = CTX+'_drive_token_expiry';
-  const savedToken = localStorage.getItem(tokenKey);
-  const savedExpiry = localStorage.getItem(expiryKey);
+  const savedToken = localStorage.getItem(CTX+'_drive_token');
+  const savedExpiry = localStorage.getItem(CTX+'_drive_token_expiry');
   if(savedToken && savedExpiry && Date.now() < parseInt(savedExpiry)){
     driveAccessToken = savedToken;
     updateDriveUI(true);
   } else if(savedToken){
+    // Token expiré — reconnecter silencieusement
     reconnectDriveSilent();
   }
 }
@@ -5279,8 +4476,7 @@ function reconnectDriveSilent(){
     const client = google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_CLIENT_ID,
       scope: DRIVE_SCOPE,
-      hint: getCTXConfig().gmail,
-      prompt: '',
+      prompt: '', // Pas de popup si déjà autorisé
       callback: (response) => {
         if(response.access_token){
           driveAccessToken = response.access_token;
@@ -5300,14 +4496,13 @@ function connectDrive(){
   const client = google.accounts.oauth2.initTokenClient({
     client_id: GOOGLE_CLIENT_ID,
     scope: DRIVE_SCOPE,
-    hint: getCTXConfig().gmail,
     callback: (response) => {
       if(response.access_token){
         driveAccessToken = response.access_token;
         localStorage.setItem(CTX+'_drive_token', driveAccessToken);
         localStorage.setItem(CTX+'_drive_token_expiry', Date.now() + (response.expires_in * 1000));
         updateDriveUI(true);
-        alert('✓ Google Drive connecté pour '+getCTXConfig().nom+' !');
+        alert('✓ Google Drive connecté ! Les PDF seront maintenant uploadés sur Drive.');
       }
     }
   });
@@ -5325,10 +4520,7 @@ function updateDriveUI(connected){
     const trierBtn=document.getElementById('btn-trier-boite');
     if(trierBtn) trierBtn.style.display='block';
     const mailBtn=document.getElementById('btn-boite-mail');
-    if(mailBtn){
-      mailBtn.style.display='flex';
-      mailBtn.href=`https://mail.google.com/mail/u/0/?authuser=${getCTXConfig().gmail}#inbox`;
-    }
+    if(mailBtn) mailBtn.style.display='flex';
   } else {
     if(connectBtn) connectBtn.style.display='block';
     if(statusBtn) statusBtn.style.display='none';
@@ -5817,101 +5009,38 @@ function closeGmailModal(){
 document.addEventListener('DOMContentLoaded',()=>{
   const o=document.getElementById('gmail-modal-overlay');
   if(o)o.addEventListener('click',function(e){if(e.target===this)closeGmailModal();});
-
-  // Initialiser l'interface selon le contexte actif (SCI ou LMNP)
   initContexteUI();
 });
 
 function initContexteUI(){
   const cfg=getCTXConfig();
-
-  // Titre et sous-titre dynamiques
-  const titleEl=document.getElementById('app-title');
-  const subEl=document.getElementById('app-subtitle');
-  const emojiEl=document.getElementById('header-emoji');
-  if(titleEl)titleEl.textContent=cfg.nom+' — Suivi des Dépenses';
-  if(subEl)subEl.textContent=cfg.sousTitre;
-  if(emojiEl)emojiEl.textContent=CTX==='sci'?'🏗':'🏠';
-
-  // Style des boutons switch
-  const btnSci=document.getElementById('switch-btn-sci');
-  const btnLmnp=document.getElementById('switch-btn-lmnp');
-  if(btnSci){
-    btnSci.style.background=CTX==='sci'?'#63b3ed':'transparent';
-    btnSci.style.color=CTX==='sci'?'#0a0e1a':'var(--text3)';
-  }
-  if(btnLmnp){
-    btnLmnp.style.background=CTX==='lmnp'?'#68d391':'transparent';
-    btnLmnp.style.color=CTX==='lmnp'?'#0a0e1a':'var(--text3)';
-  }
-
-  // Couleur d'accent selon le contexte
-  document.documentElement.style.setProperty('--accent', cfg.couleur);
-
-  // Lien boîte mail selon le contexte
-  const btnMail=document.getElementById('btn-boite-mail');
-  if(btnMail)btnMail.href=`https://mail.google.com/mail/u/0/?authuser=${cfg.gmail}#inbox`;
-
-  // Masquer le module Budget Travaux en LMNP
-  const tabBudget=document.querySelector('[data-tab="budget"]');
-  if(tabBudget){
-    tabBudget.style.display=cfg.hasBudgetTravaux?'':'none';
-  }
-
-  // ── Remplir tous les sélecteurs de logements dynamiquement ──────────────
-  // Chaque sélecteur a sa propre structure de valeurs (clé courte A/B/C ou label complet)
-  const logs=cfg.logements;
-
-  // filter-log (filtres liste factures) : value="Logement A"
-  const filterLog=document.getElementById('filter-log');
-  if(filterLog){
-    filterLog.innerHTML='<option value="">Tous logements</option>'
-      +logs.map(l=>`<option value="${l.label}">${l.label}</option>`).join('')
-      +'<option value="Commun">Commun</option>';
-  }
-
-  // f-log (saisie facture) : value="Logement A"
-  const fLog=document.getElementById('f-log');
-  if(fLog){
-    fLog.innerHTML=logs.map(l=>`<option value="${l.label}">${l.label}</option>`).join('')
-      +'<option value="Commun">Commun / Global</option>';
-  }
-
-  // e-log (édition facture) : value="Logement A"
-  const eLog=document.getElementById('e-log');
-  if(eLog){
-    eLog.innerHTML=logs.map(l=>`<option value="${l.label}">${l.label}</option>`).join('')
-      +'<option value="Commun">Commun / Global</option>';
-  }
-
-  // loc-logement (modale locataire) : value="A"
-  const locLog=document.getElementById('loc-logement');
-  if(locLog){
-    locLog.innerHTML=logs.map(l=>`<option value="${l.key}">${l.label}</option>`).join('');
-  }
-
-  // Sélecteur ligne 619 — modale quittance ou autre avec clé courte
-  // Identifié par position dans la modale de financement (id="f-log-fin" si présent)
-  // Sinon on prend tous les <select> non encore traités qui contiennent "Logement A"
-  document.querySelectorAll('select').forEach(sel=>{
-    if(['filter-log','f-log','e-log','loc-logement','f-cat','e-cat','f-statut','e-statut',
-        'filter-cat','filter-statut','filter-regby','filter-pdf','gl-logement-select',
-        'annuel-year','switch-btn-sci','switch-btn-lmnp'].includes(sel.id))return;
-    const opts=[...sel.options].map(o=>o.value);
-    // Sélecteurs avec clé courte (A/B/C)
-    if(opts.includes('A')&&opts.includes('B')){
-      sel.innerHTML=logs.map(l=>`<option value="${l.key}">${l.label}</option>`).join('');
-    }
-    // Sélecteurs avec label complet mais sans Commun (ex: filtre récap)
-    if(opts.includes('Logement A')&&opts.includes('Logement B')&&!opts.includes('Commun')){
-      sel.innerHTML=logs.map(l=>`<option value="${l.label}">${l.label}</option>`).join('');
-    }
-  });
-
-  // Titre de la page
+  const t=document.getElementById('app-title');
+  const s=document.getElementById('app-subtitle');
+  const e=document.getElementById('header-emoji');
+  if(t)t.textContent=cfg.nom+' — Suivi des Dépenses';
+  if(s)s.textContent=cfg.sousTitre;
+  if(e)e.textContent=CTX==='sci'?'🏗':'🏠';
   document.title=cfg.nom+' — Suivi des Dépenses';
+  // Boutons switch
+  const bSci=document.getElementById('switch-btn-sci');
+  const bLmnp=document.getElementById('switch-btn-lmnp');
+  if(bSci){bSci.style.background=CTX==='sci'?'#63b3ed':'transparent';bSci.style.color=CTX==='sci'?'#0a0e1a':'var(--text3)';}
+  if(bLmnp){bLmnp.style.background=CTX==='lmnp'?'#68d391':'transparent';bLmnp.style.color=CTX==='lmnp'?'#0a0e1a':'var(--text3)';}
+  // Lien boîte mail
+  const m=document.getElementById('btn-boite-mail');
+  if(m)m.href=`https://mail.google.com/mail/u/0/?authuser=${cfg.gmail}#inbox`;
+  // Sélecteurs logements
+  const logs=cfg.logements;
+  [['filter-log','label',true],['f-log','label',true],['e-log','label',true]].forEach(([id,prop,commun])=>{
+    const el=document.getElementById(id);
+    if(!el)return;
+    el.innerHTML=(id==='filter-log'?'<option value="">Tous logements</option>':'')+
+      logs.map(l=>`<option value="${l[prop]}">${l.label}</option>`).join('')+
+      (commun&&id!=='filter-log'?'<option value="Commun">Commun / Global</option>':'');
+  });
+  const locLog=document.getElementById('loc-logement');
+  if(locLog)locLog.innerHTML=logs.map(l=>`<option value="${l.key}">${l.label}</option>`).join('');
 }
-
 
 async function ouvrirDossierDrive(){
   const year=document.getElementById('annuel-year')?.value||new Date().getFullYear().toString();
@@ -6327,18 +5456,7 @@ if(window._dbReady){
 }
 </script>
 
-<div class="login-screen active" id="login-screen" style="display:none">
-<script>
-// Vérification auth immédiate AVANT le chargement du reste du JS
-// pour éviter le flash de l'écran de login au switch de contexte
-try{
-  if(localStorage.getItem('app_auth')==='1'||sessionStorage.getItem('app_auth')==='1'){
-    document.getElementById('login-screen').style.display='none';
-  } else {
-    document.getElementById('login-screen').style.display='flex';
-  }
-}catch(e){document.getElementById('login-screen').style.display='flex';}
-</script>
+<div class="login-screen" id="login-screen" style="display:none"><script>try{if(localStorage.getItem('app_auth')==='1'||sessionStorage.getItem('app_auth')==='1'){document.currentScript.parentElement.style.display='none';}else{document.currentScript.parentElement.style.display='flex';}}catch(e){document.currentScript.parentElement.style.display='flex';}</script>
   <div class="login-card">
     <img src="data:image/png;base64,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YW5dgE5PRdoKEbqsW1bbLv8Au7ngiLss7SBI0/uOuwAI5w8gvewOG77IG4ynD7K2TJN18mWcnLzz2saV1V2l9tNstNTabjSaRt7gx9W5hYx+3HI9pPi7AYDg8gVsw+HLs3P9oufLH9mH+hdwY8l9BJy24g+rbUREvGHa72I6jsmspqfSFiuN0s0sbJYXsHGWHBDmOO24IJ+hC3D4W7Vr/Rur6i3XnTF0prNc48SSvhIZFKwEsefLILmnz4m+S9OuGUxjkrTnma9spnNaa6l0PHpfUY+Lx+pzZ6v8C90B9t4PxRP2IM5/pbfVd5V9HS3Cjmo66niqaadhZLFKwOa9p2IIOxBX749cqjks7Xm2mc23p5I7a/h8utqrjddB0s1wt0zvnoWnM1MTt8ud3s9OY8cjdbZ8IWkdUaYumoZNQWOttrKiCBsJnZgPwX5A+mQvRRGSoGrSeotNOyUzkmY1Lyx8VuhtY6k7TIK+wadr7jSttkUTpYI8tDxJISPYhad2b2Ptp0Bdam5WHRVb39TB3D/tNIXjh4g7YZGDsF7YxuqPqr16mYr2zEH1J1p5jOvfiTz/AMCWdbcf9telLU+oktlLJVs4Kh0LDK3GMPwMj3XIVGPVY3vFvbSszs9kTZFRAnsiZQMpn1T3T3QN038kT2QETonRBd1N0RA38kwiIGCruoiBhN0RA3TdEQMFN0RA3TfyREDdMFEQMFMFEQMFMFEQN0wiIGEToiC7qboiBumCiIGEwURAwUwiIGEwiIGEwidEDBTCdEQMJhEQMJhOiIGEwidEDdXdREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBET2QET29kQFVEQEREBE9vZPb2QEREBERARE9vZAREQVREQEREBET29kBERBCd1QdkRAymURAyoTuiIKDsmURBCd1QdkRAyoTuiIKDsoTuiIKDsmURBCd1QdkRBCd1QdkRAyoTuiIKDsmURBCd1QdkRAymURAymURAymURAymURAymURAyoSURBQSmURAymURAymURAyoSURBQSmURAymURB//2Q==" alt="SCI Lémyane">
     <h2>SCI LÉMYANE</h2>
