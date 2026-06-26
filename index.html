@@ -396,24 +396,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 
 <!-- LOCATAIRES -->
 <div class="content" id="tab-locataires">
-  <div class="kpi-grid" id="loc-kpi-grid"></div>
-
-  <div class="section-title">Logements & locataires</div>
-  <div class="table-wrap" style="overflow-x:auto;margin-bottom:24px">
-    <table class="factures-table" id="loc-table"></table>
-  </div>
-
-  <div class="section-title">Suivi des loyers</div>
-  <div id="loyers-mois-bande" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px"></div>
-
-  <div class="filters">
-    <select class="filter-select" id="loc-year-select" onchange="renderLoyersTable()"></select>
-    <span style="font-size:10px;color:var(--text3)">Clique sur une carte pour déplier l'historique de l'année</span>
-    <div style="flex:1"></div>
-    <button class="btn-export" onclick="exportLoyersCSV()">Export CSV</button>
-    <button class="btn-export" style="background:rgba(246,173,85,.1);border-color:rgba(246,173,85,.4);color:var(--orange)" onclick="exportLoyersPDF()">Export PDF</button>
-  </div>
-  <div id="loyers-cards" style="display:flex;flex-direction:column;gap:10px;margin-bottom:24px"></div>
+  <div id="loc-futur-container"></div>
 </div>
 
 <!-- GESTION LOCATIVE -->
@@ -2813,113 +2796,291 @@ function getMonthsOccupied(loc){
   return months;
 }
 
+// Variable pour l'onglet logement actif dans la vue locataires
+let _locActiveLog = null;
+
 function renderLocataires(){
   const locs=loadLocataires();
+  const cfg=getCTXConfig();
+  const logs=cfg.logements;
   const now=new Date();
-  const y=now.getFullYear(), m=now.getMonth()+1;
+  const y=now.getFullYear(),m=now.getMonth()+1;
   const mk=monthKey(y,m);
-  const firstDay=mk+'-01';
-  const lastDay=mk+'-'+String(new Date(y,m,0).getDate()).padStart(2,'0');
+  const todayS=todayStr();
 
-  let attendus=0, encaisses=0, occSum=0, impayesTotal=0;
-  LOC_LOGEMENTS.forEach(lg=>{
-    const{occupied,total}=occupiedDays(lg.key,firstDay,lastDay);
-    occSum+=occupied/total;
+  // Init onglet actif
+  if(!_locActiveLog||!logs.find(l=>l.key===_locActiveLog))_locActiveLog='__synthese__';
+
+  // Calculs globaux
+  let encaisses=0,attendus=0,impayesTotal=0;
+  logs.forEach(lg=>{
     locs.filter(l=>l.logement===lg.key).forEach(l=>{
       const montant=(+l.loyerHC||0)+(+l.charges||0);
+      const firstDay=mk+'-01',lastDay=mk+'-'+String(new Date(y,m,0).getDate()).padStart(2,'0');
       if(isLocataireActifAt(l,lastDay)||isLocataireActifAt(l,firstDay)){
         attendus+=montant;
         const p=(l.paiements||{})[mk];
         if(p&&p.paye)encaisses+=montant;
       }
-      // Mois impayés (cumul historique, hors mois futurs)
       getMonthsOccupied(l).forEach(occMk=>{
-        if(occMk<=mk){
-          const pp=(l.paiements||{})[occMk];
-          if(!pp||!pp.paye)impayesTotal++;
-        }
+        if(occMk<=mk){const pp=(l.paiements||{})[occMk];if(!pp||!pp.paye)impayesTotal++;}
       });
     });
   });
+  const nbOccupes=logs.filter(lg=>{const c=getCurrentLocataire(lg.key);return c&&isLocataireActifAt(c,todayS);}).length;
+  const cashflowMois=encaisses;
 
-  const occPct=Math.round(occSum/LOC_LOGEMENTS.length*100);
-  const nbActifs=LOC_LOGEMENTS.filter(lg=>{const c=getCurrentLocataire(lg.key);return c&&isLocataireActifAt(c,todayStr());}).length;
+  // CSS injecté une seule fois
+  if(!document.getElementById('loc-futur-style')){
+    const st=document.createElement('style');
+    st.id='loc-futur-style';
+    st.textContent=`
+      .loc-tab-bar{display:flex;gap:0;border-bottom:2px solid var(--border2);margin-bottom:24px;overflow-x:auto}
+      .loc-tab-btn{padding:10px 20px;font-size:12px;font-weight:700;letter-spacing:.4px;border:none;background:transparent;color:var(--text3);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;transition:all .2s;white-space:nowrap;text-transform:uppercase}
+      .loc-tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);background:rgba(99,179,237,.05)}
+      .loc-tab-btn:hover:not(.active){color:var(--text);background:rgba(255,255,255,.04)}
+      .loc-log-header{display:flex;align-items:center;gap:16px;padding:20px 24px;border-radius:14px;margin-bottom:20px;border:1px solid var(--border2);position:relative;overflow:hidden}
+      .loc-log-header::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,var(--lc-header,#63b3ed)08,transparent 60%);pointer-events:none}
+      .loc-avatar{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;flex-shrink:0;border:2px solid var(--lc-avatar,#63b3ed)}
+      .loc-status-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px;animation:pulse-dot 2s infinite}
+      @keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(.8)}}
+      .loc-metric{background:rgba(255,255,255,.04);border:1px solid var(--border2);border-radius:10px;padding:14px 18px;flex:1;min-width:120px}
+      .loc-metric-val{font-size:20px;font-weight:700;margin-bottom:2px}
+      .loc-metric-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px}
+      .loc-timeline{position:relative;padding-left:28px}
+      .loc-timeline::before{content:'';position:absolute;left:8px;top:0;bottom:0;width:2px;background:var(--border2)}
+      .loc-timeline-item{position:relative;margin-bottom:16px}
+      .loc-timeline-item::before{content:'';position:absolute;left:-24px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--accent);border:2px solid var(--bg);box-shadow:0 0 0 2px var(--accent)}
+      .loc-calendar-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:4px;margin:16px 0}
+      .loc-cal-cell{aspect-ratio:1;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;cursor:pointer;transition:transform .1s}
+      .loc-cal-cell:hover{transform:scale(1.1)}
+      .loc-cal-paye{background:rgba(104,211,145,.25);border:1px solid rgba(104,211,145,.5);color:#68d391}
+      .loc-cal-impaye{background:rgba(252,129,129,.2);border:1px solid rgba(252,129,129,.4);color:#fc8181}
+      .loc-cal-futur{background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text3)}
+      .loc-cal-vacant{background:transparent;border:1px dashed var(--border);color:var(--border2)}
+      .loc-alert-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:600;margin:3px}
+      .loc-alert-red{background:rgba(252,129,129,.15);border:1px solid rgba(252,129,129,.35);color:#fc8181}
+      .loc-alert-orange{background:rgba(246,173,85,.12);border:1px solid rgba(246,173,85,.35);color:#f6ad55}
+      .loc-alert-green{background:rgba(104,211,145,.1);border:1px solid rgba(104,211,145,.3);color:#68d391}
+      .loc-vacant-card{border:2px dashed var(--border2);border-radius:16px;padding:40px;text-align:center;background:rgba(255,255,255,.02)}
+    `;
+    document.head.appendChild(st);
+  }
 
-  document.getElementById('loc-kpi-grid').innerHTML=`
-    <div class="kpi" style="--kpi-color:#63b3ed">
-      <div class="kpi-label">Loyers encaissés (mois)</div>
-      <div class="kpi-val">${fmt(encaisses)}</div>
-      <div class="kpi-sub">sur ${fmt(attendus)} attendus</div>
-    </div>
-    <div class="kpi" style="--kpi-color:#68d391">
-      <div class="kpi-label">Taux d'occupation</div>
-      <div class="kpi-val">${occPct}%</div>
-      <div class="kpi-sub">${now.toLocaleDateString('fr-FR',{month:'long',year:'numeric'})}</div>
-    </div>
-    <div class="kpi" style="--kpi-color:${impayesTotal>0?'#fc8181':'#68d391'}">
-      <div class="kpi-label">Mois impayés (cumul)</div>
-      <div class="kpi-val">${impayesTotal}</div>
-      <div class="kpi-sub">tous locataires confondus</div>
-    </div>
-    <div class="kpi" style="--kpi-color:#b794f4">
-      <div class="kpi-label">Logements occupés</div>
-      <div class="kpi-val">${nbActifs} / ${LOC_LOGEMENTS.length}</div>
-      <div class="kpi-sub">aujourd'hui</div>
-    </div>`;
+  const container=document.getElementById('loc-futur-container');
+  if(!container)return;
 
-  // Tableau logements & locataires
-  let locRows='';
-  LOC_LOGEMENTS.forEach(lg=>{
-    const cur=getCurrentLocataire(lg.key);
-    const actif=cur&&isLocataireActifAt(cur,todayStr());
-    if(actif){
-      const total=(+cur.loyerHC||0)+(+cur.charges||0);
-      locRows+=`<tr>
-        <td><span class="log-badge log-${lg.key.toLowerCase()}">Logement ${lg.key}</span></td>
-        <td>${cur.nom||'—'}</td>
-        <td><span class="status-pill ok">Occupé</span></td>
-        <td style="text-align:right" class="amount">${fmt(cur.loyerHC)}</td>
-        <td style="text-align:right" class="amount">${fmt(cur.charges)}</td>
-        <td style="text-align:right" class="amount">${fmt(total)}</td>
-        <td style="text-align:right" class="amount">${fmt(cur.depot)}</td>
-        <td>${fmtDate(cur.dateEntree)}</td>
-        <td>${fmtDate(cur.dateSortie)}</td>
-        <td style="white-space:nowrap">
-          <button class="btn btn-sm btn-edit" onclick="openLocModal('${cur.id}')">Modifier</button>
-          <button class="btn btn-sm" onclick="openLocModal(null,'${lg.key}')">+ Nouveau</button>
-        </td>
-      </tr>`;
-    }else{
-      locRows+=`<tr>
-        <td><span class="log-badge log-${lg.key.toLowerCase()}">Logement ${lg.key}</span></td>
-        <td>${cur?cur.nom||'—':'—'}</td>
-        <td><span class="status-pill warn">Vacant</span></td>
-        <td colspan="6" style="text-align:center;color:var(--text3)">${cur?'Sorti le '+fmtDate(cur.dateSortie):'Aucun historique'}</td>
-        <td style="white-space:nowrap"><button class="btn btn-sm" onclick="openLocModal(null,'${lg.key}')">+ Ajouter un locataire</button></td>
-      </tr>`;
+  // ── Onglets par logement ──────────────────────────────────────────────────
+  const tabBar=`<div class="loc-tab-bar">
+    <button class="loc-tab-btn ${_locActiveLog==='__synthese__'?'active':''}" onclick="_locActiveLog='__synthese__';renderLocataires()">
+      📊 Synthèse
+    </button>
+    ${logs.map(lg=>{
+      const cur=getCurrentLocataire(lg.key);
+      const actif=cur&&isLocataireActifAt(cur,todayS);
+      const dot=actif?'🟢':'⚪';
+      return`<button class="loc-tab-btn ${_locActiveLog===lg.key?'active':''}" onclick="_locActiveLog='${lg.key}';renderLocataires()" style="${_locActiveLog===lg.key?'--accent:'+lg.color:''}">${dot} ${lg.label}</button>`;
+    }).join('')}
+  </div>`;
+
+  // ── Vue SYNTHÈSE ───────────────────────────────────────────────────────────
+  if(_locActiveLog==='__synthese__'){
+    const tauxEnc=attendus>0?Math.round(encaisses/attendus*100):0;
+    const synthHtml=`
+      ${tabBar}
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px">
+        <div class="loc-metric"><div class="loc-metric-val" style="color:#63b3ed">${fmt(cashflowMois)}</div><div class="loc-metric-label">Encaissé ce mois</div></div>
+        <div class="loc-metric"><div class="loc-metric-val" style="color:${tauxEnc>=100?'#68d391':tauxEnc>=50?'#f6ad55':'#fc8181'}">${tauxEnc}%</div><div class="loc-metric-label">Taux encaissement</div></div>
+        <div class="loc-metric"><div class="loc-metric-val" style="color:${impayesTotal>0?'#fc8181':'#68d391'}">${impayesTotal}</div><div class="loc-metric-label">Mois impayés (cumul)</div></div>
+        <div class="loc-metric"><div class="loc-metric-val" style="color:#b794f4">${nbOccupes}/${logs.length}</div><div class="loc-metric-label">Logements occupés</div></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(${logs.length},1fr);gap:16px;margin-bottom:24px">
+        ${logs.map(lg=>{
+          const cur=getCurrentLocataire(lg.key);
+          const actif=cur&&isLocataireActifAt(cur,todayS);
+          const montant=cur?(+cur.loyerHC||0)+(+cur.charges||0):0;
+          const paye=(cur&&(cur.paiements||{})[mk]?.paye);
+          const initiales=cur&&cur.nom?cur.nom.split(' ').map(p=>p[0]).join('').toUpperCase().slice(0,2):'?';
+          // Mois impayés pour ce logement
+          let impLog=0;
+          if(cur)getMonthsOccupied(cur).forEach(occMk=>{if(occMk<=mk){const pp=(cur.paiements||{})[occMk];if(!pp||!pp.paye)impLog++;}});
+          return`<div style="background:rgba(255,255,255,.03);border:1px solid ${lg.color}33;border-radius:16px;padding:20px;cursor:pointer;transition:all .2s" onclick="_locActiveLog='${lg.key}';renderLocataires()">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+              <div class="loc-avatar" style="--lc-avatar:${lg.color};background:${lg.color}22;color:${lg.color}">${actif?initiales:'○'}</div>
+              <div>
+                <div style="font-size:11px;color:${lg.color};font-weight:700;text-transform:uppercase;letter-spacing:.5px">${lg.label}</div>
+                <div style="font-size:13px;font-weight:600;color:var(--text)">${actif?cur.nom:'Vacant'}</div>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+              <span style="font-size:20px;font-weight:700;color:${lg.color}">${actif?fmt(montant):fmt(0)}</span>
+              <span style="font-size:10px;padding:3px 10px;border-radius:12px;font-weight:600;${actif?paye?'background:rgba(104,211,145,.15);color:#68d391':'background:rgba(252,129,129,.15);color:#fc8181':'background:rgba(255,255,255,.06);color:var(--text3)'}">${actif?paye?'✓ Payé ce mois':'⚠ En attente':'Vacant'}</span>
+            </div>
+            ${actif&&impLog>0?`<div style="font-size:10px;color:#fc8181">⚠ ${impLog} mois impayé${impLog>1?'s':''}</div>`:''}
+            <div style="font-size:10px;color:var(--text3);margin-top:4px">${actif?'Entrée: '+fmtDate(cur.dateEntree):'Cliquer pour ajouter'}</div>
+          </div>`;
+        }).join('')}
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-bottom:16px">
+        <button class="btn-export" onclick="exportLoyersCSV()">📊 Export CSV</button>
+        <button class="btn-export" style="background:rgba(246,173,85,.1);border-color:rgba(246,173,85,.4);color:var(--orange)" onclick="exportLoyersPDF()">📄 Export PDF</button>
+      </div>`;
+    container.innerHTML=synthHtml;
+    return;
+  }
+
+  // ── Vue par LOGEMENT ───────────────────────────────────────────────────────
+  const lg=logs.find(l=>l.key===_locActiveLog);
+  if(!lg){container.innerHTML=tabBar;return;}
+  const cur=getCurrentLocataire(lg.key);
+  const actif=cur&&isLocataireActifAt(cur,todayS);
+  const initiales=cur&&cur.nom?cur.nom.split(' ').map(p=>p[0]).join('').toUpperCase().slice(0,2):'?';
+  const montant=cur?(+cur.loyerHC||0)+(+cur.charges||0):0;
+  const pMoisCur=(cur&&(cur.paiements||{})[mk]);
+  const payeCeMois=pMoisCur&&pMoisCur.paye;
+
+  // Alertes
+  const alertes=[];
+  if(actif){
+    if(!payeCeMois)alertes.push({type:'red',msg:'Loyer '+now.toLocaleDateString('fr-FR',{month:'long',year:'numeric'})+' non encaissé'});
+    if(cur.dateSortie){const d=new Date(cur.dateSortie);const diff=Math.round((d-now)/86400000);if(diff<=60&&diff>0)alertes.push({type:'orange',msg:'Bail expire dans '+diff+' jours ('+fmtDate(cur.dateSortie)+')'});}
+    if(!cur.depot||+cur.depot===0)alertes.push({type:'orange',msg:'Dépôt de garantie non renseigné'});
+    // Mois impayés
+    let nbImp=0;
+    getMonthsOccupied(cur).forEach(occMk=>{if(occMk<=mk){const pp=(cur.paiements||{})[occMk];if(!pp||!pp.paye)nbImp++;}});
+    if(nbImp>1)alertes.push({type:'red',msg:nbImp+' mois impayés au total'});
+    if(payeCeMois)alertes.push({type:'green',msg:'Loyer du mois encaissé ✓'});
+  }
+
+  // Calendrier des paiements (12 mois glissants)
+  const calHtml=()=>{
+    const months=[];
+    for(let i=11;i>=0;i--){
+      const d=new Date(y,m-1-i,1);
+      const dMk=monthKey(d.getFullYear(),d.getMonth()+1);
+      months.push(dMk);
     }
-  });
-  document.getElementById('loc-table').innerHTML=`<thead><tr>
-    <th>Logement</th><th>Locataire</th><th>Statut</th>
-    <th style="text-align:right">Loyer HC</th><th style="text-align:right">Charges</th><th style="text-align:right">Total/mois</th><th style="text-align:right">Dépôt</th>
-    <th>Entrée</th><th>Sortie</th><th>Actions</th>
-  </tr></thead><tbody>${locRows}</tbody>`;
+    return`<div class="loc-calendar-grid">${months.map(dMk=>{
+      if(!cur){return`<div class="loc-cal-cell loc-cal-vacant" title="${dMk}">—</div>`;}
+      const isOcc=getMonthsOccupied(cur).includes(dMk);
+      const pp=(cur.paiements||{})[dMk];
+      const isFutur=dMk>mk;
+      const label=dMk.slice(5);
+      if(!isOcc)return`<div class="loc-cal-cell loc-cal-vacant" title="${dMk}">○</div>`;
+      if(isFutur)return`<div class="loc-cal-cell loc-cal-futur" title="${dMk}">${label}</div>`;
+      if(pp&&pp.paye)return`<div class="loc-cal-cell loc-cal-paye" title="${dMk} — Payé le ${pp.date||'?'}" onclick="modifierDatePaiement('${cur.id}','${dMk}')">${label}</div>`;
+      return`<div class="loc-cal-cell loc-cal-impaye" title="${dMk} — Non payé" onclick="marquerPaye('${cur.id}','${dMk}')">${label}</div>`;
+    }).join('')}</div>
+    <div style="display:flex;gap:12px;font-size:10px;color:var(--text3);margin-top:4px">
+      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(104,211,145,.25);margin-right:4px"></span>Payé</span>
+      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(252,129,129,.2);margin-right:4px"></span>Impayé (cliquer pour marquer)</span>
+      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;border:1px dashed var(--border);margin-right:4px"></span>Vacant</span>
+    </div>`;
+  };
 
-  // Sélecteur d'année
-  const yearSel=document.getElementById('loc-year-select');
-  const curYear=now.getFullYear();
-  const years=new Set([curYear-1,curYear,curYear+1]);
-  locs.forEach(l=>{
-    if(l.dateEntree)years.add(+l.dateEntree.slice(0,4));
-    if(l.dateSortie)years.add(+l.dateSortie.slice(0,4));
-  });
-  const sortedYears=[...years].sort((a,b)=>a-b);
-  const prevVal=yearSel.value;
-  yearSel.innerHTML=sortedYears.map(yy=>`<option value="${yy}">${yy}</option>`).join('');
-  yearSel.value=(prevVal&&sortedYears.includes(+prevVal))?prevVal:String(curYear);
+  // Historique paiements
+  const histoPaie=()=>{
+    if(!cur)return'';
+    const paiementsTriés=Object.entries(cur.paiements||{}).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,12);
+    if(!paiementsTriés.length)return'<p style="font-size:12px;color:var(--text3)">Aucun paiement enregistré</p>';
+    return`<div class="loc-timeline">${paiementsTriés.map(([pmk,p])=>`<div class="loc-timeline-item">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <span style="font-size:12px;font-weight:600;color:var(--text)">${pmk.replace('-',' / ')}</span>
+          ${p.paye?`<span class="loc-alert-badge loc-alert-green" style="margin-left:8px">✓ ${p.date?fmtDate(p.date):''}</span>`:`<span class="loc-alert-badge loc-alert-red" style="margin-left:8px">✗ Impayé</span>`}
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span style="font-size:13px;font-weight:700;color:${p.paye?'#68d391':'#fc8181'}">${fmt(montant)}</span>
+          <button class="btn btn-sm" onclick="modifierDatePaiement('${cur.id}','${pmk}')" style="font-size:10px;padding:2px 8px">✏</button>
+        </div>
+      </div>
+    </div>`).join('')}</div>`;
+  };
 
-  renderLoyersTable();
+  // Vue logement
+  container.innerHTML=`
+    ${tabBar}
+    ${alertes.length?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:20px">${alertes.map(a=>`<span class="loc-alert-badge loc-alert-${a.type}">${a.type==='red'?'⚠':a.type==='orange'?'⚡':'✓'} ${a.msg}</span>`).join('')}</div>`:''}
+
+    ${actif?`
+    <div class="loc-log-header" style="--lc-header:${lg.color}">
+      <div class="loc-avatar" style="--lc-avatar:${lg.color};background:${lg.color}22;color:${lg.color};font-size:20px">${initiales}</div>
+      <div style="flex:1">
+        <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:2px">${cur.nom||'—'}</div>
+        <div style="font-size:12px;color:var(--text2)">${lg.label} · <span class="loc-status-dot" style="background:${lg.color}"></span>Locataire actif depuis ${fmtDate(cur.dateEntree)}</div>
+        ${cur.tel?`<div style="font-size:11px;color:var(--text3);margin-top:2px">📞 ${cur.tel}${cur.email?' · ✉ '+cur.email:''}</div>`:''}
+      </div>
+      <div style="display:flex;gap:10px;flex-shrink:0">
+        <button class="btn btn-sm btn-edit" onclick="openLocModal('${cur.id}')">✏ Modifier</button>
+        <button class="btn btn-sm" style="background:rgba(104,211,145,.1);border-color:rgba(104,211,145,.3);color:#68d391" onclick="glEnvoyerQuittanceMail('${cur.id}')">📧 Quittance</button>
+        <button class="btn btn-sm" onclick="ouvrirModalAjoutPaiement('${cur.id}','${mk}')">+ Encaisser loyer</button>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+      <div class="loc-metric"><div class="loc-metric-val" style="color:${lg.color}">${fmt(montant)}</div><div class="loc-metric-label">Loyer total / mois</div></div>
+      <div class="loc-metric"><div class="loc-metric-val" style="color:${payeCeMois?'#68d391':'#fc8181'}">${payeCeMois?'✓ Payé':'⏳ En attente'}</div><div class="loc-metric-label">Statut ce mois</div></div>
+      <div class="loc-metric"><div class="loc-metric-val">${fmt(cur.depot||0)}</div><div class="loc-metric-label">Dépôt de garantie</div></div>
+      <div class="loc-metric"><div class="loc-metric-val" style="color:#b794f4">${fmt((+cur.loyerHC||0)*12)}</div><div class="loc-metric-label">Loyer annuel HC</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">
+      <div class="table-wrap" style="padding:20px 22px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);margin-bottom:14px">📅 Calendrier des paiements — 12 mois</div>
+        ${calHtml()}
+      </div>
+      <div class="table-wrap" style="padding:20px 22px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);margin-bottom:14px">🕐 Historique</div>
+        ${histoPaie()}
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="openLocModal(null,'${lg.key}')">+ Nouveau locataire</button>
+      <button class="btn-export" onclick="exportLoyersCSV()">📊 Export CSV</button>
+      <button class="btn-export" style="background:rgba(246,173,85,.1);border-color:rgba(246,173,85,.4);color:var(--orange)" onclick="exportLoyersPDF()">📄 Export PDF</button>
+    </div>`
+
+    :`<div class="loc-vacant-card">
+      <div style="font-size:48px;margin-bottom:16px">🏠</div>
+      <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">${lg.label} — Vacant</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:24px">Aucun locataire actif. Ajoute le premier locataire pour commencer le suivi.</div>
+      <button class="btn" onclick="openLocModal(null,'${lg.key}')" style="margin:0 auto">+ Ajouter un locataire</button>
+    </div>`}
+  `;
 }
+
+// Marquer un mois comme payé rapidement depuis le calendrier
+function marquerPaye(locId,mk){
+  const locs=loadLocataires();
+  const loc=locs.find(l=>l.id===locId);
+  if(!loc)return;
+  if(!loc.paiements)loc.paiements={};
+  const dateStr=todayStr();
+  loc.paiements[mk]={paye:true,date:dateStr};
+  saveLocataires(locs);
+  renderLocataires();
+}
+
+// Modal rapide pour encaisser le loyer du mois
+function ouvrirModalAjoutPaiement(locId,mk){
+  const locs=loadLocataires();
+  const loc=locs.find(l=>l.id===locId);
+  if(!loc)return;
+  const existingDate=((loc.paiements||{})[mk]||{}).date||todayStr();
+  const dateInput=prompt(`Date de paiement pour ${mk} (JJ/MM/AAAA) :`,fmtDate(existingDate));
+  if(!dateInput)return;
+  const parts=dateInput.split('/');
+  if(parts.length!==3)return;
+  const isoDate=`${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+  if(!loc.paiements)loc.paiements={};
+  loc.paiements[mk]={paye:true,date:isoDate};
+  saveLocataires(locs);
+  renderLocataires();
+}
+
 
 // Bande "ce mois-ci" : un badge par logement avec son statut (payé / en retard / vacant).
 function renderLoyersMoisBande(){
