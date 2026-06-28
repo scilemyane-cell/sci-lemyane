@@ -3039,8 +3039,8 @@ function renderLocataires(){
       </div>
 
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-bottom:16px">
-        <button class="btn-export" onclick="exportLoyersCSV()">📊 Export CSV</button>
-        <button class="btn-export" style="background:rgba(246,173,85,.1);border-color:rgba(246,173,85,.4);color:var(--orange)" onclick="exportLoyersPDF()">📄 Export PDF</button>
+        <button class="btn-export" onclick="ouvrirModalExport()">📊 Export CSV</button>
+        <button class="btn-export" style="background:rgba(246,173,85,.1);border-color:rgba(246,173,85,.4);color:var(--orange)" onclick="ouvrirModalExport()">📄 Export PDF</button>
       </div>`;
     container.innerHTML=synthHtml;
     return;
@@ -3188,7 +3188,7 @@ function renderLocataires(){
       </div>
       <div style="display:flex;gap:10px;flex-shrink:0">
         <button class="btn btn-sm btn-edit" onclick="openLocModal('${cur.id}')">✏ Modifier</button>
-        <button class="btn btn-sm" style="background:rgba(104,211,145,.1);border-color:rgba(104,211,145,.3);color:#68d391" onclick="glEnvoyerQuittanceMail('${cur.id}')">📧 Quittance</button>
+        <button class="btn btn-sm" style="background:rgba(104,211,145,.1);border-color:rgba(104,211,145,.3);color:#68d391" onclick="ouvrirModalQuittance('${cur.id}')">📄 Quittance</button>
         <button class="btn btn-sm" onclick="ouvrirModalPaiement('${cur.id}','${mk}','${lg.key}')">+ Encaisser loyer</button>
       </div>
     </div>
@@ -3213,8 +3213,8 @@ function renderLocataires(){
 
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn btn-sm" onclick="openLocModal(null,'${lg.key}')">+ Nouveau locataire</button>
-      <button class="btn-export" onclick="exportLoyersCSV()">📊 Export CSV</button>
-      <button class="btn-export" style="background:rgba(246,173,85,.1);border-color:rgba(246,173,85,.4);color:var(--orange)" onclick="exportLoyersPDF()">📄 Export PDF</button>
+      <button class="btn-export" onclick="ouvrirModalExport()">📊 Export CSV</button>
+      <button class="btn-export" style="background:rgba(246,173,85,.1);border-color:rgba(246,173,85,.4);color:var(--orange)" onclick="ouvrirModalExport()">📄 Export PDF</button>
     </div>
     ${historiqueHtml()}`
 
@@ -3879,32 +3879,37 @@ function rentFiltresTout(){
   renderRentabilite();
 }
 function rentFiltresReset(){
-  const nowY=new Date().getFullYear();
-  document.querySelectorAll('#rent-years-checks input').forEach(el=>el.checked=(+el.value===nowY));
-  document.querySelectorAll('#rent-logs-checks input').forEach(el=>el.checked=true);
+  // Reconstruire les filtres avec les valeurs par défaut
+  initRentFiltres(true);
   renderRentabilite();
 }
 
-function initRentFiltres(){
+function initRentFiltres(force){
   const locs=loadLocataires();
   const cfg=getCTXConfig();
   const nowY=new Date().getFullYear();
   const firstYear=locs.reduce((min,l)=>l.dateEntree?Math.min(min,+l.dateEntree.slice(0,4)):min,nowY);
+  // Année la plus récente avec des données
+  const lastYearWithData=locs.reduce((max,l)=>{
+    const y=l.dateSortie?+l.dateSortie.slice(0,4):nowY;
+    return Math.max(max,y);
+  },firstYear);
+  const defaultYear=Math.min(nowY,lastYearWithData);
 
-  // Années
+  // Années — toujours reconstruire si force=true
   const yearsEl=document.getElementById('rent-years-checks');
-  if(yearsEl&&!yearsEl.children.length){
+  if(yearsEl&&(!yearsEl.children.length||force)){
     const years=Array.from({length:nowY-firstYear+1},(_,i)=>nowY-i);
     yearsEl.innerHTML=years.map(y=>`
       <label style="display:flex;align-items:center;gap:5px;cursor:pointer;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;transition:.15s">
-        <input type="checkbox" value="${y}" ${y===nowY?'checked':''} onchange="renderRentabilite()" style="accent-color:var(--accent)">
+        <input type="checkbox" value="${y}" ${y===defaultYear?'checked':''} onchange="renderRentabilite()" style="accent-color:var(--accent)">
         <span>${y}</span>
       </label>`).join('');
   }
 
   // Logements
   const logsEl=document.getElementById('rent-logs-checks');
-  if(logsEl&&!logsEl.children.length){
+  if(logsEl&&(!logsEl.children.length||force)){
     logsEl.innerHTML=cfg.logements.map(lg=>`
       <label style="display:flex;align-items:center;gap:5px;cursor:pointer;background:${lg.color}15;border:1px solid ${lg.color}44;border-radius:8px;padding:5px 10px;font-size:12px;transition:.15s">
         <input type="checkbox" value="${lg.key}" checked onchange="renderRentabilite()" style="accent-color:${lg.color}">
@@ -3918,20 +3923,28 @@ function ouvrirModalExport(){
   const cfg=getCTXConfig();
   const nowY=new Date().getFullYear();
   const firstYear=locs.reduce((min,l)=>l.dateEntree?Math.min(min,+l.dateEntree.slice(0,4)):min,nowY);
+  const lastYearWithData=locs.reduce((max,l)=>{
+    const y=l.dateSortie?+l.dateSortie.slice(0,4):nowY;
+    return Math.max(max,y);
+  },firstYear);
+  const defaultYear=Math.min(nowY,lastYearWithData);
   const years=Array.from({length:nowY-firstYear+1},(_,i)=>nowY-i);
 
-  // Sync avec filtres actuels
-  const{years:selY,logs:selL}=getRentFiltres();
+  // Récupérer les filtres actifs si l'onglet rentabilité est ouvert
+  const selY=[];
+  document.querySelectorAll('#rent-years-checks input:checked').forEach(el=>selY.push(+el.value));
+  const selL=[];
+  document.querySelectorAll('#rent-logs-checks input:checked').forEach(el=>selL.push(el.value));
 
   document.getElementById('export-years-checks').innerHTML=years.map(y=>`
     <label style="display:flex;align-items:center;gap:5px;cursor:pointer;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px">
-      <input type="checkbox" value="${y}" ${selY.includes(y)||!selY.length?'checked':''} style="accent-color:var(--accent)">
+      <input type="checkbox" value="${y}" ${selY.length?selY.includes(y)?'checked':'':y===defaultYear?'checked':''} style="accent-color:var(--accent)">
       <span>${y}</span>
     </label>`).join('');
 
   document.getElementById('export-logs-checks').innerHTML=cfg.logements.map(lg=>`
     <label style="display:flex;align-items:center;gap:5px;cursor:pointer;background:${lg.color}15;border:1px solid ${lg.color}44;border-radius:8px;padding:5px 10px;font-size:12px">
-      <input type="checkbox" value="${lg.key}" ${selL.includes(lg.key)||!selL.length?'checked':''} style="accent-color:${lg.color}">
+      <input type="checkbox" value="${lg.key}" ${selL.length?selL.includes(lg.key)?'checked':'':''} checked style="accent-color:${lg.color}">
       <span style="color:${lg.color}">${lg.label}</span>
     </label>`).join('');
 
@@ -4628,26 +4641,44 @@ function getLoyersExportRows(year){
     const locsLog=locs.filter(l=>l.logement===lg.key).sort((a,b)=>(a.dateEntree||'').localeCompare(b.dateEntree||''));
     for(let mIdx=1;mIdx<=12;mIdx++){
       const mk=monthKey(year,mIdx);
-      // Trouver le locataire actif ce mois
-      const locActif=locsLog.find(l=>isLocataireActifCeMois(l,mk));
-      if(!locActif)continue;
+      if(mk>todayMk)continue; // ne pas inclure les mois futurs
+      // Chercher si un locataire a un paiement (payé ou vacant explicite)
+      const locAvecPaiement=locsLog.find(l=>(l.paiements||{})[mk]);
+      const locActif=[...locsLog].sort((a,b)=>(b.dateEntree||'').localeCompare(a.dateEntree||'')).find(l=>isLocataireActifCeMois(l,mk));
+
+      if(locAvecPaiement){
+        const pp=(locAvecPaiement.paiements||{})[mk];
+        if(pp.vacant){
+          // Mois vacant explicite
+          rows.push({
+            logement:lg.label,logKey:lg.key,
+            locataire:'— Vacant —',mois:months[mIdx-1],annee:year,mk,
+            loyerHC:0,charges:0,total:0,totalTheorique:0,
+            statut:'Vacant',datePaiement:'',isVacant:true
+          });
+          continue;
+        }
+        if(pp.paye&&locActif){
+          const mInfo=getMontantPeriode(locActif,mk);
+          rows.push({
+            logement:lg.label,logKey:lg.key,
+            locataire:locActif.nom||'—',mois:months[mIdx-1],annee:year,mk,
+            loyerHC:mInfo.loyerHC,charges:mInfo.charges,
+            total:pp.montant||mInfo.total,totalTheorique:mInfo.total,
+            statut:'Réglé',datePaiement:pp.date?fmtDate(pp.date):''
+          });
+          continue;
+        }
+      }
+      if(!locActif)continue; // vraiment vacant, pas de locataire
       const mInfo=getMontantPeriode(locActif,mk);
-      const p=(locActif.paiements||{})[mk];
-      const paye=p&&p.paye;
       const isFuture=mk>todayMk;
       rows.push({
-        logement:lg.label,
-        logKey:lg.key,
-        locataire:locActif.nom||'—',
-        mois:months[mIdx-1],
-        annee:year,
-        mk,
-        loyerHC:mInfo.loyerHC,
-        charges:mInfo.charges,
-        total:p?.montant||mInfo.total,
-        totalTheorique:mInfo.total,
-        statut:paye?'Réglé':(isFuture?'À échoir':'Impayé'),
-        datePaiement:paye&&p.date?fmtDate(p.date):''
+        logement:lg.label,logKey:lg.key,
+        locataire:locActif.nom||'—',mois:months[mIdx-1],annee:year,mk,
+        loyerHC:mInfo.loyerHC,charges:mInfo.charges,
+        total:mInfo.total,totalTheorique:mInfo.total,
+        statut:'Impayé',datePaiement:''
       });
     }
   });
@@ -4673,6 +4704,16 @@ function exportLoyersCSV(years, logKeys){
     r.loyerHC.toFixed(2),r.charges.toFixed(2),r.total.toFixed(2),
     r.statut,r.datePaiement
   ].map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(';'));
+
+  // Résumé en bas
+  const totalRegle=allRows.filter(r=>r.statut==='Réglé').reduce((s,r)=>s+r.total,0);
+  const totalImpa=allRows.filter(r=>r.statut==='Impayé').reduce((s,r)=>s+r.total,0);
+  const totalVacant=allRows.filter(r=>r.isVacant).length;
+  csvRows.push('');
+  csvRows.push(`"TOTAL RÉGLÉ";"${totalRegle.toFixed(2)} €"`);
+  csvRows.push(`"LOYERS IMPAYÉS";"${totalImpa.toFixed(2)} €"`);
+  csvRows.push(`"MOIS VACANTS";"${totalVacant}"`);
+  csvRows.push(`"LOYERS NON PERÇUS (impayés+vacants)";"${(totalImpa).toFixed(2)} €"`);
   const csv='\uFEFF'+cols.join(';')+'\n'+csvRows.join('\n');
   const a=document.createElement('a');
   const nomFichier=cfg.nom.replace(/\s/g,'_')+'_Loyers_'+sortedYears.join('-')+'.csv';
@@ -4758,6 +4799,15 @@ function exportLoyersPDF(years, logKeys){
     <div style="margin-top:24px;padding:14px;background:#edf2f7;border-radius:8px;font-size:13px;font-weight:700;color:#2d3748">
       TOTAL GÉNÉRAL — Réglé : ${fmt(totalEncG)} / Attendu : ${fmt(totalDuG)}
     </div>
+    ${(()=>{
+      const totalImpaG=allRows.filter(r=>r.statut==='Impayé').reduce((s,r)=>s+r.totalTheorique,0);
+      const nbVacantG=allRows.filter(r=>r.isVacant).length;
+      if(!totalImpaG&&!nbVacantG)return'';
+      return`<div style="margin-top:12px;padding:14px;background:#fff5f5;border:1px solid #fed7d7;border-radius:8px;font-size:12px;color:#c53030">
+        <b>⚠ Loyers non perçus</b><br>
+        Impayés : <b>${fmt(totalImpaG)}</b>${nbVacantG?` · Mois vacants : <b>${nbVacantG}</b>`:''}
+      </div>`;
+    })()}
   </body></html>`;
 
   const w=window.open('','_blank');
@@ -4768,83 +4818,165 @@ function exportLoyersPDF(years, logKeys){
 // Construit le HTML de la quittance pour le locataire/mois donnés.
 // forPrint=true ajoute le script d'auto-impression (utilisé par l'aperçu) ; forPrint=false
 // produit un document "propre" destiné à être converti en PDF (pour l'envoi par mail).
-function buildQuittanceHTML(locId,mk,forPrint){
+function buildQuittanceHTML(locId,mk,forPrint,isDuplicate){
   const l=loadLocataires().find(x=>String(x.id)===String(locId));
   if(!l)return null;
-  const lg=LOC_LOGEMENTS.find(x=>x.key===l.logement);
+  const cfg=getCTXConfig();
+  const lg=getLogementsActifs().find(x=>x.key===l.logement);
   const[yy,mm]=mk.split('-');
   const moisNom=new Date(+yy,+mm-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
   const debutMois=fmtDate(`${yy}-${mm}-01`);
   const finJour=new Date(+yy,+mm,0).getDate();
   const finMois=fmtDate(`${yy}-${mm}-${String(finJour).padStart(2,'0')}`);
-  const montantLoyer=+l.loyerHC||0, montantCharges=+l.charges||0, total=montantLoyer+montantCharges;
+  const mInfo=getMontantPeriode(l,mk);
   const p=(l.paiements||{})[mk]||{};
+  // Utiliser le montant réellement encaissé si disponible
+  const montantLoyer=mInfo.loyerHC;
+  const montantCharges=mInfo.charges;
+  const totalTheo=montantLoyer+montantCharges;
+  const totalReel=p.montant||totalTheo;
   const datePaiement=p.date?fmtDate(p.date):'—';
-  const montantLettres=nombreEnLettres(total);
-  const html=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Quittance ${moisNom}</title>
+  const montantLettres=nombreEnLettres(totalReel);
+  const adresseLogement=lg?lg.adresse:(cfg.nom+' — Logement '+l.logement);
+  const nomBailleur=cfg.nom;
+  const adresseBailleur=CTX==='sci'?'65 Chemin des Guignardières, 85300 Soullans':'Sallertaine (85300)';
+
+  const duplicataWatermark=isDuplicate?`
+    <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);
+      font-size:72px;font-weight:900;color:rgba(0,0,0,.08);pointer-events:none;
+      white-space:nowrap;z-index:0;letter-spacing:8px;user-select:none">
+      DUPLICATA
+    </div>`:'' ;
+
+  const html=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Quittance ${moisNom}${isDuplicate?' - DUPLICATA':''}</title>
   <style>
-    body{font-family:'Segoe UI',Arial,sans-serif;color:#1a202c;padding:40px;font-size:13px;line-height:1.5}
-    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #2b6cb0;padding-bottom:16px;margin-bottom:24px}
-    .header-left{display:flex;align-items:center;gap:14px}
-    .header-left img{height:54px;width:auto;border-radius:6px}
-    .header h1{font-size:18px;color:#2b6cb0;margin-bottom:4px}
-    .header p{font-size:11px;color:#718096}
-    .box{background:#ebf8ff;border:1px solid #bee3f8;border-radius:8px;padding:16px 20px;margin-bottom:20px}
-    .row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e2e8f0;font-size:13px}
+    *{box-sizing:border-box}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#1a202c;padding:40px;font-size:13px;line-height:1.6;position:relative}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #2b6cb0;padding-bottom:16px;margin-bottom:24px}
+    .header h1{font-size:20px;color:#2b6cb0;margin:0 0 4px;font-weight:800;letter-spacing:.5px}
+    .header p{font-size:11px;color:#718096;margin:2px 0}
+    .box{background:#ebf8ff;border:1px solid #bee3f8;border-radius:10px;padding:18px 22px;margin-bottom:20px}
+    .row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #e2e8f0;font-size:13px}
     .row:last-child{border-bottom:none}
     .row.total{font-weight:700;font-size:15px;color:#2b6cb0;border-top:2px solid #bee3f8;padding-top:10px;margin-top:6px}
-    .lettres{font-style:italic;color:#4a5568;margin:14px 0}
+    .lettres{font-style:italic;color:#4a5568;margin:14px 0;padding:10px 14px;background:#f7fafc;border-left:3px solid #2b6cb0;border-radius:4px}
     .signature{margin-top:50px;display:flex;justify-content:flex-end;text-align:center}
     .mentions{margin-top:36px;padding-top:14px;border-top:1px solid #e2e8f0;font-size:9px;color:#a0aec0;line-height:1.6}
-    .footer{margin-top:16px;font-size:10px;color:#a0aec0}
+    ${isDuplicate?`.duplicata-banner{background:#fed7d7;border:2px solid #fc8181;border-radius:8px;padding:6px 16px;text-align:center;font-size:13px;font-weight:700;color:#c53030;letter-spacing:2px;margin-bottom:16px}`:''}
     @media print{body{padding:20px}}
   </style></head><body>
+    ${duplicataWatermark}
+    ${isDuplicate?'<div class="duplicata-banner">⚠ DUPLICATA</div>':''}
     <div class="header">
-      <div class="header-left">
-        <img src="${SCI_LOGO_B64}" alt="SCI Lémyane">
-        <div>
-          <h1>QUITTANCE DE LOYER</h1>
-          <p>SCI LÉMYANE</p>
-          <p>${lg?lg.adresse:''}</p>
-        </div>
+      <div>
+        <h1>QUITTANCE DE LOYER</h1>
+        <p style="font-weight:600;font-size:13px">${nomBailleur}</p>
+        <p>${adresseBailleur}</p>
+        ${isDuplicate?'<p style="color:#c53030;font-weight:600;font-size:11px">DUPLICATA</p>':''}
       </div>
       <div style="text-align:right">
         <p>Période : <b>${moisNom}</b></p>
         <p>Du ${debutMois} au ${finMois}</p>
-        <p>Émise le : ${fmtDate(todayStr())}</p>
+        <p style="color:#718096;font-size:11px">Émise le ${fmtDate(todayStr())}</p>
       </div>
     </div>
-    <p style="margin-bottom:16px">La SCI LÉMYANE, propriétaire du logement désigné ci-dessous, déclare avoir reçu de :</p>
+    <p style="margin-bottom:16px"><b>${nomBailleur}</b>, propriétaire du logement désigné ci-dessous, déclare avoir reçu de :</p>
     <div class="box">
       <div class="row"><span>Locataire</span><span><b>${l.nom||'—'}</b></span></div>
-      <div class="row"><span>Logement</span><span>Logement ${l.logement} — ${lg?lg.adresse:''}</span></div>
+      <div class="row"><span>Logement</span><span>${adresseLogement}</span></div>
       <div class="row"><span>Loyer hors charges</span><span>${fmt(montantLoyer)}</span></div>
       <div class="row"><span>Provision pour charges</span><span>${fmt(montantCharges)}</span></div>
-      <div class="row total"><span>Total réglé</span><span>${fmt(total)}</span></div>
+      ${totalReel!==totalTheo?`<div class="row"><span>Montant théorique</span><span style="text-decoration:line-through;color:#718096">${fmt(totalTheo)}</span></div>`:''}
+      <div class="row total"><span>Total réglé</span><span>${fmt(totalReel)}</span></div>
       <div class="row"><span>Date de paiement</span><span>${datePaiement}</span></div>
     </div>
-    <p class="lettres">Soit la somme de : ${montantLettres}.</p>
+    <p class="lettres">Soit la somme de : <b>${montantLettres}</b>.</p>
     <p>La présente quittance est délivrée au titre du loyer et des charges pour la période sus-indiquée, et lui en donne quittance, sous réserve de tous ses droits, conformément à l'article 21 de la loi n°89-462 du 6 juillet 1989.</p>
     <div class="signature">
       <div>
-        <p>Fait à Soullans, le ${fmtDate(todayStr())}</p>
-        <p style="margin-top:30px">Le bailleur — SCI LÉMYANE</p>
+        <p>Fait à ${CTX==='sci'?'Soullans':'Sallertaine'}, le ${fmtDate(todayStr())}</p>
+        <div style="margin-top:50px;border-top:1px solid #2d3748;padding-top:8px;min-width:200px">
+          <p style="font-size:11px;color:#4a5568">Le bailleur — ${nomBailleur}</p>
+        </div>
       </div>
     </div>
     <div class="mentions">
-      Cette quittance annule tous les reçus qui auraient pu être établis précédemment en cas de versements partiels. Elle est à conserver par le locataire sans limitation de durée et peut être demandée à tout moment.
+      Cette quittance annule tous les reçus qui auraient pu être établis précédemment en cas de versements partiels. Elle est à conserver par le locataire sans limitation de durée.
     </div>
-    <div class="footer">Document généré automatiquement — SCI LÉMYANE, 65 Chemin des Guignardières, 85300 Soullans</div>
     ${forPrint?'<script>window.onload=function(){window.print()}<\\/script>':''}
   </body></html>`;
   return{html,moisNom,locataire:l};
 }
+function ouvrirModalQuittance(locId){
+  const locs=loadLocataires();
+  const loc=locs.find(l=>String(l.id)===String(locId));
+  if(!loc)return;
+
+  // Construire la liste des mois occupés (du plus récent au plus ancien)
+  const mois=getMonthsOccupied(loc).reverse();
+  const nowMk=monthKey(new Date().getFullYear(),new Date().getMonth()+1);
+  if(!mois.length){alert('Aucun mois disponible pour ce locataire.');return;}
+
+  let modal=document.getElementById('modal-quittance');
+  if(modal)modal.remove();
+  modal=document.createElement('div');
+  modal.id='modal-quittance';
+  modal.style.cssText='display:flex;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2000;align-items:center;justify-content:center';
+
+  const moisOptions=mois.map(mk=>{
+    const[yy,mm]=mk.split('-');
+    const label=new Date(+yy,+mm-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+    const p=(loc.paiements||{})[mk];
+    const paye=p&&p.paye?'✓':'';
+    return`<option value="${mk}" ${mk===nowMk?'selected':''}>${label} ${paye}</option>`;
+  }).join('');
+
+  modal.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:18px;padding:28px;width:420px;max-width:94vw;box-shadow:0 24px 60px rgba(0,0,0,.5)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <h2 style="margin:0;font-size:16px">📄 Générer une quittance</h2>
+        <button onclick="document.getElementById('modal-quittance').remove()" style="background:none;border:none;color:var(--text3);font-size:22px;cursor:pointer">×</button>
+      </div>
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px">👤 ${loc.nom||'—'}</div>
+      <div class="form-group" style="margin-bottom:16px">
+        <label>Mois de la quittance</label>
+        <select id="quit-mois">${moisOptions}</select>
+        <div style="font-size:10px;color:var(--text3);margin-top:4px">✓ = loyer marqué comme payé</div>
+      </div>
+      <div style="margin-bottom:20px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px 16px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px">
+          <input type="checkbox" id="quit-duplicata" style="width:18px;height:18px;accent-color:#fc8181;cursor:pointer">
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--text)">DUPLICATA</div>
+            <div style="font-size:10px;color:var(--text3)">Ajoute le tampon "DUPLICATA" en travers de la page</div>
+          </div>
+        </label>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-sm" onclick="document.getElementById('modal-quittance').remove()" style="background:var(--bg3);border-color:var(--border)">Annuler</button>
+        <button class="btn btn-sm" onclick="validerModalQuittance('${locId}')" style="background:var(--accent);color:#0a0e1a;border-color:var(--accent);font-weight:700">📄 Générer</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+  document.body.appendChild(modal);
+}
+
+function validerModalQuittance(locId){
+  const mk=document.getElementById('quit-mois')?.value;
+  const isDuplicate=document.getElementById('quit-duplicata')?.checked||false;
+  if(!mk)return;
+  document.getElementById('modal-quittance')?.remove();
+  const r=buildQuittanceHTML(locId,mk,true,isDuplicate);
+  if(!r)return;
+  const titre='Quittance'+(isDuplicate?' (DUPLICATA)':'')+' — '+r.moisNom+' — '+(r.locataire.nom||'');
+  openPrintOverlay(r.html,titre);
+}
 
 function genererQuittance(locId,mk){
-  const r=buildQuittanceHTML(locId,mk,true);
-  if(!r)return;
-  openPrintOverlay(r.html,'Quittance — '+r.moisNom+' — '+(r.locataire.nom||''));
+  // Compatibilité ancienne version
+  ouvrirModalQuittance(locId);
 }
+
 
 // ── GESTION LOCATIVE — rendu synthèse + détail par logement ───────────────
 let _glActiveLog=null;
