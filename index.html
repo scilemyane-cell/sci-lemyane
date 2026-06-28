@@ -3048,7 +3048,7 @@ function renderLocataires(){
     <div style="display:grid;grid-template-columns:repeat(12,1fr);gap:4px">
       ${months.map(({mi,dMk})=>{
         const info=getPaieInfo(dMk);
-        if(info.vacant)return`<div class="loc-cal-cell loc-cal-vacant" title="${MOIS[mi-1]} ${calYear} — Vacant">○</div>`;
+        if(info.vacant)return`<div class="loc-cal-cell loc-cal-vacant" title="${MOIS[mi-1]} ${calYear} — Vacant — Cliquer pour saisir un paiement" style="cursor:pointer" onclick="ouvrirModalPaiementVacant('${lg.key}','${dMk}')">○</div>`;
         if(info.isFutur)return`<div class="loc-cal-cell loc-cal-futur" title="${MOIS[mi-1]} ${calYear}">${MOIS[mi-1]}</div>`;
         if(info.pp&&info.pp.paye)return`<div class="loc-cal-cell loc-cal-paye" title="${MOIS[mi-1]} — Payé${info.pp.date?' le '+fmtDate(info.pp.date):''} — Cliquer pour modifier" style="cursor:pointer" onclick="ouvrirModalPaiement('${info.locForMonth.id}','${dMk}','${lg.key}')">${MOIS[mi-1]}</div>`;
         return`<div class="loc-cal-cell loc-cal-impaye" title="${MOIS[mi-1]} — Non payé — cliquer pour encaisser" onclick="ouvrirModalPaiement('${info.locForMonth.id}','${dMk}','${lg.key}')">${MOIS[mi-1]}</div>`;
@@ -3179,19 +3179,44 @@ function ouvrirModalPaiement(locId, mk, logKeyOverride){
   const parts=mk.split('-');
   const moisLabel=new Date(+parts[0],+parts[1]-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
 
-  // Trouver ou déduire le logement
+  // Trouver le logement et tous ses locataires
   let loc=locs.find(l=>String(l.id)===String(locId));
   const logKey=logKeyOverride||(loc?loc.logement:null);
   const locsLogement=logKey?locs.filter(l=>l.logement===logKey):loc?[loc]:[];
 
-  // Paiement existant
+  // Paiement existant pour ce mois
   const existing=loc?(loc.paiements||{})[mk]||{}:{};
-  const montantDefaut=existing.montant||(loc?loc.lastMontantLoyer||getMontantPeriode(loc,mk).total:0);
-  const dateDefaut=existing.date||mk+'-01';
   const isPaye=existing.paye||false;
 
+  // Pré-remplissage intelligent :
+  // Si paiement déjà saisi → utiliser ses valeurs
+  // Sinon → utiliser lastPaiement (dernier paiement mémorisé sur ce locataire)
+  // Sinon → montant de la période + date du 1er du mois
+  let montantDefaut, dateDefaut, locIdDefaut=String(locId);
+
+  if(isPaye){
+    montantDefaut=existing.montant;
+    dateDefaut=existing.date;
+  } else if(loc&&loc.lastPaiement){
+    montantDefaut=loc.lastPaiement.montant;
+    dateDefaut=loc.lastPaiement.dateTemplate||mk+'-01';
+    // Si le locataire mémorisé existe toujours, le pré-sélectionner
+    if(loc.lastPaiement.locId&&locsLogement.find(l=>String(l.id)===loc.lastPaiement.locId)){
+      locIdDefaut=loc.lastPaiement.locId;
+    }
+  } else {
+    montantDefaut=loc?(loc.lastMontantLoyer||getMontantPeriode(loc,mk).total):0;
+    dateDefaut=mk+'-01';
+  }
+
+  // S'assurer que locIdDefaut pointe sur un locataire existant
+  if(!locsLogement.find(l=>String(l.id)===locIdDefaut)&&locsLogement.length>0){
+    locIdDefaut=String(locsLogement[0].id);
+  }
+  const locSelectionne=locs.find(l=>String(l.id)===locIdDefaut)||loc;
+
   // Options locataires pour ce logement
-  const optionsLoc=locsLogement.map(l=>`<option value="${l.id}" ${String(l.id)===String(locId)?'selected':''}>${l.nom||'—'} (${fmtDate(l.dateEntree)}${l.dateSortie?' → '+fmtDate(l.dateSortie):''})</option>`).join('');
+  const optionsLoc=locsLogement.map(l=>`<option value="${l.id}" ${String(l.id)===locIdDefaut?'selected':''}>${l.nom||'—'} (${fmtDate(l.dateEntree)}${l.dateSortie?' → '+fmtDate(l.dateSortie):''})</option>`).join('');
 
   // Construire/reconstruire la modale à chaque ouverture
   let modal=document.getElementById('modal-paiement-loyer');
@@ -3209,22 +3234,21 @@ function ouvrirModalPaiement(locId, mk, logKeyOverride){
 
       ${locsLogement.length>1?`
       <div class="form-group" style="margin-bottom:16px">
-        <label>Locataire concerné</label>
+        <label>Locataire</label>
         <select id="mpl-locataire" onchange="mplChangerLocataire(this.value,'${mk}')">
           ${optionsLoc}
         </select>
-        <div style="font-size:10px;color:var(--text3);margin-top:4px">Modifiable si le paiement concerne un ancien locataire</div>
-      </div>`:`<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px">👤 ${loc?loc.nom:'—'}</div>`}
+      </div>`:`<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px">👤 ${locSelectionne?locSelectionne.nom:'—'}</div>`}
 
       <div class="form-grid">
         <div class="form-group">
           <label>Montant encaissé (€)</label>
-          <input type="number" id="mpl-montant" step="0.01" value="${montantDefaut}" style="font-size:16px;font-weight:700">
-          <div style="font-size:10px;color:var(--text3);margin-top:4px">Modifiable — loyer de référence : ${fmt(loc?getMontantPeriode(loc,mk).total:0)}</div>
+          <input type="number" id="mpl-montant" step="0.01" value="${montantDefaut||''}" style="font-size:16px;font-weight:700">
+          <div style="font-size:10px;color:var(--text3);margin-top:4px">Référence période : ${fmt(locSelectionne?getMontantPeriode(locSelectionne,mk).total:0)}</div>
         </div>
         <div class="form-group">
           <label>Date de paiement</label>
-          <input type="date" id="mpl-date" value="${dateDefaut}">
+          <input type="date" id="mpl-date" value="${dateDefaut||mk+'-01'}">
         </div>
         <div class="form-group">
           <label>Note (optionnel)</label>
@@ -3239,13 +3263,76 @@ function ouvrirModalPaiement(locId, mk, logKeyOverride){
       </div>
     </div>`;
   modal.addEventListener('click',e=>{if(e.target===modal)fermerModalPaiement();});
-  modal._locId=String(locId);
+  modal._locId=locIdDefaut;
   modal._mk=mk;
   document.body.appendChild(modal);
   setTimeout(()=>document.getElementById('mpl-montant')?.focus(),50);
 }
 
-// Recharger le montant quand on change de locataire dans la modale
+// Ouvrir la modale pour un mois vacant (pas de locataire actif ce mois)
+// Permet de choisir n'importe quel locataire du logement pour y rattacher un paiement
+function ouvrirModalPaiementVacant(logKey, mk){
+  const locs=loadLocataires();
+  const locsLogement=locs.filter(l=>l.logement===logKey);
+  if(!locsLogement.length){
+    alert('Aucun locataire enregistré pour ce logement. Ajoutez d\'abord un locataire.');
+    return;
+  }
+  const parts=mk.split('-');
+  const moisLabel=new Date(+parts[0],+parts[1]-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+
+  // Prendre le premier locataire comme sélection par défaut
+  const locDefaut=locsLogement[locsLogement.length-1]; // le plus récent
+  const existing=(locDefaut.paiements||{})[mk]||{};
+  const montantDefaut=existing.montant||locDefaut.lastMontantLoyer||getMontantPeriode(locDefaut,mk).total;
+
+  const optionsLoc=locsLogement.map(l=>`<option value="${l.id}">${l.nom||'—'} (${fmtDate(l.dateEntree)}${l.dateSortie?' → '+fmtDate(l.dateSortie):''})</option>`).join('');
+
+  let modal=document.getElementById('modal-paiement-loyer');
+  if(modal)modal.remove();
+  modal=document.createElement('div');
+  modal.id='modal-paiement-loyer';
+  modal.style.cssText='display:flex;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2000;align-items:center;justify-content:center';
+  modal.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:18px;padding:28px;width:440px;max-width:94vw;box-shadow:0 24px 60px rgba(0,0,0,.5)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h2 style="margin:0;font-size:16px">Saisir un paiement</h2>
+        <button onclick="fermerModalPaiement()" style="background:none;border:none;color:var(--text3);font-size:22px;cursor:pointer;line-height:1">×</button>
+      </div>
+      <div style="font-size:12px;color:var(--accent);font-weight:600;margin-bottom:20px">${moisLabel} — <span style="color:var(--text3)">Période sans locataire actif détecté</span></div>
+      <div class="form-group" style="margin-bottom:16px">
+        <label>Rattacher à quel locataire ?</label>
+        <select id="mpl-locataire" onchange="mplChangerLocataire(this.value,'${mk}')">
+          ${optionsLoc}
+        </select>
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Montant encaissé (€)</label>
+          <input type="number" id="mpl-montant" step="0.01" value="${montantDefaut}" style="font-size:16px;font-weight:700">
+        </div>
+        <div class="form-group">
+          <label>Date de paiement</label>
+          <input type="date" id="mpl-date" value="${mk+'-01'}">
+        </div>
+        <div class="form-group">
+          <label>Note (optionnel)</label>
+          <input type="text" id="mpl-note" placeholder="ex: virement, chèque...">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
+        <button class="btn btn-sm" onclick="fermerModalPaiement()" style="background:var(--bg3);border-color:var(--border)">Annuler</button>
+        <button class="btn btn-sm" onclick="validerPaiementModal()" style="background:#68d391;color:#0a0e1a;border-color:#68d391;font-weight:700">✓ Valider</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click',e=>{if(e.target===modal)fermerModalPaiement();});
+  modal._locId=String(locDefaut.id);
+  modal._mk=mk;
+  document.body.appendChild(modal);
+  setTimeout(()=>document.getElementById('mpl-montant')?.focus(),50);
+}
+
+
 function mplChangerLocataire(newLocId, mk){
   const modal=document.getElementById('modal-paiement-loyer');
   if(!modal)return;
@@ -3285,7 +3372,15 @@ function validerPaiementModal(){
   if(!loc)return;
   if(!loc.paiements)loc.paiements={};
   loc.paiements[mk]={paye:true,date,montant,note};
+
+  // Mémoriser le dernier paiement pour pré-remplir le mois suivant
+  // La date suggérée pour le mois suivant = même jour du mois prochain
+  const dateObj=new Date(date+'T00:00:00');
+  const nextMonthDate=new Date(dateObj.getFullYear(), dateObj.getMonth()+1, dateObj.getDate());
+  const nextDateStr=nextMonthDate.toISOString().slice(0,10);
+  loc.lastPaiement={montant, locId:String(locId), dateTemplate:nextDateStr};
   loc.lastMontantLoyer=montant;
+
   saveLocataires(locs);
   fermerModalPaiement();
   renderLocataires();
