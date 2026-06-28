@@ -3436,6 +3436,26 @@ function validerPaiementModal(){
   saveLocataires(locs);
   fermerModalPaiement();
   renderLocataires();
+
+  // Générer automatiquement la quittance et proposer l'envoi mail
+  const r=buildQuittanceHTML(locId,mk,true,false);
+  if(r){
+    openPrintOverlay(r.html,'Quittance — '+r.moisNom+' — '+(r.locataire.nom||''));
+    // Ajouter bouton "Envoyer par mail" dans la barre de l'aperçu
+    const overlay=document.getElementById('print-overlay');
+    if(overlay){
+      const existing=document.getElementById('btn-mail-quittance');
+      if(existing)existing.remove();
+      const btnMail=document.createElement('button');
+      btnMail.id='btn-mail-quittance';
+      btnMail.className='btn btn-sm';
+      btnMail.style.cssText='background:rgba(246,173,85,.1);border-color:rgba(246,173,85,.4);color:#f6ad55;margin-left:8px';
+      btnMail.textContent='📧 Envoyer par mail';
+      btnMail.onclick=()=>glEnvoyerQuittanceMail(locId,mk,btnMail);
+      const bar=overlay.querySelector('.print-toolbar');
+      if(bar)bar.insertBefore(btnMail,bar.querySelector('button:last-child'));
+    }
+  }
 }
 
 function supprimerPaiementModal(){
@@ -4830,12 +4850,13 @@ function buildQuittanceHTML(locId,mk,forPrint,isDuplicate){
   const finMois=fmtDate(`${yy}-${mm}-${String(finJour).padStart(2,'0')}`);
   const mInfo=getMontantPeriode(l,mk);
   const p=(l.paiements||{})[mk]||{};
-  // Utiliser le montant réellement encaissé si disponible
   const montantLoyer=mInfo.loyerHC;
   const montantCharges=mInfo.charges;
   const totalTheo=montantLoyer+montantCharges;
   const totalReel=p.montant||totalTheo;
   const datePaiement=p.date?fmtDate(p.date):'—';
+  // Date d'émission = date du paiement (pas aujourd'hui)
+  const dateEmission=p.date?fmtDate(p.date):fmtDate(todayStr());
   const montantLettres=nombreEnLettres(totalReel);
   const adresseLogement=lg?lg.adresse:(cfg.nom+' — Logement '+l.logement);
   const nomBailleur=cfg.nom;
@@ -4843,27 +4864,31 @@ function buildQuittanceHTML(locId,mk,forPrint,isDuplicate){
 
   const duplicataWatermark=isDuplicate?`
     <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);
-      font-size:72px;font-weight:900;color:rgba(0,0,0,.08);pointer-events:none;
-      white-space:nowrap;z-index:0;letter-spacing:8px;user-select:none">
+      font-size:80px;font-weight:900;color:rgba(0,0,0,.07);pointer-events:none;
+      white-space:nowrap;z-index:999;letter-spacing:10px;user-select:none;width:100%;text-align:center">
       DUPLICATA
-    </div>`:'' ;
+    </div>`:'';
 
-  const html=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Quittance ${moisNom}${isDuplicate?' - DUPLICATA':''}</title>
+  const html=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+  <title>Quittance ${moisNom}${isDuplicate?' - DUPLICATA':''}</title>
   <style>
-    *{box-sizing:border-box}
-    body{font-family:'Segoe UI',Arial,sans-serif;color:#1a202c;padding:40px;font-size:13px;line-height:1.6;position:relative}
-    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #2b6cb0;padding-bottom:16px;margin-bottom:24px}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#1a202c;padding:30px 40px;font-size:13px;line-height:1.6;position:relative;max-width:700px;margin:0 auto}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #2b6cb0;padding-bottom:14px;margin-bottom:22px}
     .header h1{font-size:20px;color:#2b6cb0;margin:0 0 4px;font-weight:800;letter-spacing:.5px}
     .header p{font-size:11px;color:#718096;margin:2px 0}
-    .box{background:#ebf8ff;border:1px solid #bee3f8;border-radius:10px;padding:18px 22px;margin-bottom:20px}
-    .row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #e2e8f0;font-size:13px}
+    .box{background:#ebf8ff;border:1px solid #bee3f8;border-radius:10px;padding:16px 20px;margin-bottom:18px}
+    .row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e2e8f0;font-size:13px}
     .row:last-child{border-bottom:none}
     .row.total{font-weight:700;font-size:15px;color:#2b6cb0;border-top:2px solid #bee3f8;padding-top:10px;margin-top:6px}
-    .lettres{font-style:italic;color:#4a5568;margin:14px 0;padding:10px 14px;background:#f7fafc;border-left:3px solid #2b6cb0;border-radius:4px}
-    .signature{margin-top:50px;display:flex;justify-content:flex-end;text-align:center}
-    .mentions{margin-top:36px;padding-top:14px;border-top:1px solid #e2e8f0;font-size:9px;color:#a0aec0;line-height:1.6}
-    ${isDuplicate?`.duplicata-banner{background:#fed7d7;border:2px solid #fc8181;border-radius:8px;padding:6px 16px;text-align:center;font-size:13px;font-weight:700;color:#c53030;letter-spacing:2px;margin-bottom:16px}`:''}
-    @media print{body{padding:20px}}
+    .lettres{font-style:italic;color:#4a5568;margin:12px 0;padding:10px 14px;background:#f7fafc;border-left:3px solid #2b6cb0;border-radius:4px;font-size:12px}
+    .signature{margin-top:44px;display:flex;justify-content:flex-end;text-align:center}
+    .mentions{margin-top:30px;padding-top:12px;border-top:1px solid #e2e8f0;font-size:9px;color:#a0aec0;line-height:1.6}
+    .duplicata-banner{background:#fed7d7;border:2px solid #fc8181;border-radius:8px;padding:6px 16px;text-align:center;font-size:13px;font-weight:700;color:#c53030;letter-spacing:3px;margin-bottom:14px}
+    @media print{
+      @page{size:A4 portrait;margin:15mm 20mm}
+      body{padding:0;max-width:100%}
+    }
   </style></head><body>
     ${duplicataWatermark}
     ${isDuplicate?'<div class="duplicata-banner">⚠ DUPLICATA</div>':''}
@@ -4872,15 +4897,15 @@ function buildQuittanceHTML(locId,mk,forPrint,isDuplicate){
         <h1>QUITTANCE DE LOYER</h1>
         <p style="font-weight:600;font-size:13px">${nomBailleur}</p>
         <p>${adresseBailleur}</p>
-        ${isDuplicate?'<p style="color:#c53030;font-weight:600;font-size:11px">DUPLICATA</p>':''}
       </div>
       <div style="text-align:right">
         <p>Période : <b>${moisNom}</b></p>
         <p>Du ${debutMois} au ${finMois}</p>
-        <p style="color:#718096;font-size:11px">Émise le ${fmtDate(todayStr())}</p>
+        <p style="font-size:11px;color:#4a5568">Émise le : ${dateEmission}</p>
+        ${isDuplicate?`<p style="color:#c53030;font-weight:700;font-size:12px;margin-top:4px">DUPLICATA</p>`:''}
       </div>
     </div>
-    <p style="margin-bottom:16px"><b>${nomBailleur}</b>, propriétaire du logement désigné ci-dessous, déclare avoir reçu de :</p>
+    <p style="margin-bottom:14px"><b>${nomBailleur}</b>, propriétaire du logement désigné ci-dessous, déclare avoir reçu de :</p>
     <div class="box">
       <div class="row"><span>Locataire</span><span><b>${l.nom||'—'}</b></span></div>
       <div class="row"><span>Logement</span><span>${adresseLogement}</span></div>
@@ -4891,11 +4916,11 @@ function buildQuittanceHTML(locId,mk,forPrint,isDuplicate){
       <div class="row"><span>Date de paiement</span><span>${datePaiement}</span></div>
     </div>
     <p class="lettres">Soit la somme de : <b>${montantLettres}</b>.</p>
-    <p>La présente quittance est délivrée au titre du loyer et des charges pour la période sus-indiquée, et lui en donne quittance, sous réserve de tous ses droits, conformément à l'article 21 de la loi n°89-462 du 6 juillet 1989.</p>
+    <p style="margin-bottom:14px">La présente quittance est délivrée au titre du loyer et des charges pour la période sus-indiquée, conformément à l'article 21 de la loi n°89-462 du 6 juillet 1989.</p>
     <div class="signature">
       <div>
         <p>Fait à ${CTX==='sci'?'Soullans':'Sallertaine'}, le ${fmtDate(todayStr())}</p>
-        <div style="margin-top:50px;border-top:1px solid #2d3748;padding-top:8px;min-width:200px">
+        <div style="margin-top:46px;border-top:1px solid #2d3748;padding-top:8px;min-width:220px">
           <p style="font-size:11px;color:#4a5568">Le bailleur — ${nomBailleur}</p>
         </div>
       </div>
@@ -5285,25 +5310,41 @@ function glEnvoyerMail(docId){
   });
 }
 
-async function glEnvoyerQuittanceMail(locId,btn){
+async function glEnvoyerQuittanceMail(locId, mk, btn){
   const l=loadLocataires().find(x=>String(x.id)===String(locId));
   if(!l)return;
-  if(!l.email){alert('Aucune adresse email enregistrée pour ce locataire.');return;}
-  const mk=monthKey(new Date().getFullYear(),new Date().getMonth()+1);
-  const moisNom=new Date().toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
-  const sujet=`Quittance de loyer — ${moisNom}`;
-  const corps=`Bonjour ${l.nom||''},\n\nVeuillez trouver ci-joint votre quittance de loyer pour ${moisNom}.\n\nCordialement,\nSCI Lémyane`;
+  if(!l.email){alert('Aucune adresse email enregistrée pour ce locataire.\nAjoute l\'email dans sa fiche.');return;}
+  if(!mk)mk=monthKey(new Date().getFullYear(),new Date().getMonth()+1);
+  const[yy,mm]=mk.split('-');
+  const moisNom=new Date(+yy,+mm-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+  const cfg=getCTXConfig();
+  const sujet=`Quittance de loyer — ${moisNom} — ${cfg.nom}`;
+  const corps=`Bonjour ${l.nom||''},\n\nVeuillez trouver ci-joint votre quittance de loyer pour la période de ${moisNom}.\n\nCordialement,\n${cfg.nom}`;
 
-  if(btn){btn.disabled=true;btn.textContent='⏳ Génération...';}
+  if(btn){btn.disabled=true;btn.textContent='⏳ Génération PDF...';}
   const pdfBase64=await quittancePdfBase64(locId,mk);
   if(!pdfBase64){
-    alert('La génération du PDF de la quittance a échoué. Le brouillon ne sera pas créé.');
-    if(btn){btn.disabled=false;btn.textContent='✉️ Envoyer dernière quittance';}
+    alert('La génération du PDF a échoué. Essaie d\'imprimer manuellement.');
+    if(btn){btn.disabled=false;btn.textContent='📧 Envoyer par mail';}
     return;
   }
-  const ok=await createGmailDraft(l.email,sujet,corps,{filename:`Quittance_${moisNom.replace(' ','_')}_${l.nom||''}.pdf`,base64Data:pdfBase64});
-  if(btn){btn.disabled=false;btn.textContent='✉️ Envoyer dernière quittance';}
-  if(ok)alert('Brouillon créé dans Gmail avec la quittance en pièce jointe, prêt à être vérifié et envoyé.');
+  const nomFichier=`Quittance_${moisNom.replace(' ','_')}_${(l.nom||'').replace(/\s/g,'_')}.pdf`;
+  const ok=await createGmailDraft(l.email,sujet,corps,{filename:nomFichier,base64Data:pdfBase64});
+  if(btn){btn.disabled=false;btn.textContent='📧 Envoyer par mail';}
+  if(ok){
+    // Ouvrir Gmail directement sur les brouillons
+    const gmailUrl=`https://mail.google.com/mail/u/0/?authuser=${cfg.gmail}#drafts`;
+    if(confirm(`✓ Brouillon créé avec la quittance en pièce jointe.\n\nOuvrir Gmail pour envoyer ?`)){
+      window.open(gmailUrl,'_blank');
+    }
+  }
+}
+
+// Appelée automatiquement après validation d'un paiement
+async function envoyerQuittanceAuto(locId, mk){
+  const l=loadLocataires().find(x=>String(x.id)===String(locId));
+  if(!l||!l.email)return; // Pas d'email = pas d'envoi auto silencieux
+  await glEnvoyerQuittanceMail(locId, mk, null);
 }
 
 function glDemanderJustificatif(locId){
