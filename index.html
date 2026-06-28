@@ -399,6 +399,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
   <div id="loc-futur-container"></div>
 </div>
 
+<!-- PARAMÈTRES -->
+<div class="content" id="tab-parametres">
+  <div id="parametres-container"></div>
+</div>
+
 <!-- GESTION LOCATIVE -->
 <div class="content" id="tab-gestion-locative">
   <div class="section-title">Synthèse — Gestion locative</div>
@@ -941,23 +946,50 @@ const CTX_CONFIG={
   sci:{
     nom:'SCI LÉMYANE',sousTitre:'65 Chemin des Guignardières · Soullans (85300)',
     couleur:'#63b3ed',gmail:'sci.lemyane@gmail.com',driveFolderName:'SCI Lemyane Factures',
-    logements:[
-      {key:'A',label:'Logement A',color:'#63b3ed'},
-      {key:'B',label:'Logement B',color:'#68d391'},
-      {key:'C',label:'Logement C',color:'#f6ad55'}
-    ],hasBudgetTravaux:true
+    hasBudgetTravaux:true,
+    defaultLogements:[
+      {key:'A',label:'Logement A',color:'#63b3ed',adresse:'65 Chemin des Guignardières — Log. A, 85300 Soullans',actif:true},
+      {key:'B',label:'Logement B',color:'#68d391',adresse:'65 Chemin des Guignardières — Log. B, 85300 Soullans',actif:true},
+      {key:'C',label:'Logement C',color:'#f6ad55',adresse:'65 Chemin des Guignardières — Log. C, 85300 Soullans',actif:true}
+    ]
   },
   lmnp:{
     nom:'LMNP BARRETEAU',sousTitre:'Sallertaine (85300) — Location Meublée Non Professionnelle',
     couleur:'#68d391',gmail:'locationssallertaine@gmail.com',driveFolderName:'LMNP Barreteau Factures',
-    logements:[
-      {key:'1',label:'49 Allée Jean Pairan',color:'#68d391'},
-      {key:'2',label:'49 bis Allée Jean Pairan',color:'#f6ad55'}
-    ],hasBudgetTravaux:false
+    hasBudgetTravaux:false,
+    defaultLogements:[
+      {key:'1',label:'49 Allée Jean Pairan',color:'#68d391',adresse:'49 Allée Jean Pairan, 85300 Sallertaine',actif:true},
+      {key:'2',label:'49 bis Allée Jean Pairan',color:'#f6ad55',adresse:'49 bis Allée Jean Pairan, 85300 Sallertaine',actif:true}
+    ]
   }
 };
-function getCTXConfig(){return CTX_CONFIG[CTX];}
-const LOC_LOGEMENTS=getCTXConfig().logements;
+
+// Logements stockés en localStorage — jamais en dur dans le code
+function loadLogements(){
+  try{
+    const stored=localStorage.getItem(ctxKey('logements_config'));
+    if(stored){
+      const parsed=JSON.parse(stored);
+      if(Array.isArray(parsed)&&parsed.length>0)return parsed;
+    }
+  }catch(e){}
+  // Première fois : initialiser depuis les défauts
+  const defaults=CTX_CONFIG[CTX].defaultLogements;
+  saveLogements(defaults);
+  return defaults;
+}
+function saveLogements(logs){
+  localStorage.setItem(ctxKey('logements_config'),JSON.stringify(logs));
+}
+function getLogementsActifs(){
+  return loadLogements().filter(l=>l.actif!==false);
+}
+
+function getCTXConfig(){
+  const base=CTX_CONFIG[CTX];
+  return{...base,logements:getLogementsActifs()};
+}
+const LOC_LOGEMENTS=getLogementsActifs();
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CATEGORIES=[
@@ -1430,23 +1462,27 @@ function clearUpload(isEdit){
 // ── TABS ─────────────────────────────────────────────────────────────────
 // ── NAVIGATION (groupes + sous-onglets) ────────────────────────────────────
 function getTabGroups(){
+  const paramGroup={id:'parametres',label:'⚙️ Paramètres',tabs:['parametres']};
   if(CTX==='lmnp'){return[
     {id:'comptabilite',label:'🧾 Comptabilité',tabs:['factures','annuel','saisie']},
     {id:'locataires',label:'🏠 Locataires',tabs:['locataires','gestion-locative','rentabilite']},
-    {id:'financement',label:'💰 Financement',tabs:['financement']}
+    {id:'financement',label:'💰 Financement',tabs:['financement']},
+    paramGroup
   ];}
   return[
     {id:'construction',label:'🏗️ Construction prévisionnelle',tabs:['synthese','logements','budget','dashboard']},
     {id:'comptabilite',label:'🧾 Comptabilité',tabs:['factures','annuel','saisie']},
     {id:'locataires',label:'🏠 Locataires',tabs:['locataires','gestion-locative','rentabilite']},
-    {id:'financement',label:'💰 Financement',tabs:['projection','financement']}
+    {id:'financement',label:'💰 Financement',tabs:['projection','financement']},
+    paramGroup
   ];
 }
 function getTabLabels(){return{
   synthese:'Synthèse',logements:'Par logement',budget:'Budget prévisionnel',dashboard:'📊 Dashboard Prév.',
   factures:'Factures réelles',annuel:'📅 Par année',saisie:'+ Saisir une facture',
   locataires:'Fiches & loyers','gestion-locative':'📁 Gestion locative',rentabilite:'📈 Rentabilité',
-  projection:'🔭 Projection 20 ans',financement:'💳 Crédit & charges'
+  projection:'🔭 Projection 20 ans',financement:'💳 Crédit & charges',
+  parametres:'⚙️ Paramètres'
 };}
 const TAB_GROUPS=getTabGroups();
 const TAB_LABELS=getTabLabels();
@@ -1481,6 +1517,7 @@ function showTab(id){
   if(id==='projection')renderProjection();
   if(id==='financement')renderFinancement();
   if(id==='cout-revient')renderCoutRevient();
+  if(id==='parametres')renderParametres();
   if(id==='budget')renderBudget();
   if(id==='dashboard')renderDashboard();
   if(id==='factures')renderFactures();
@@ -2798,6 +2835,7 @@ function getMonthsOccupied(loc){
 
 // Variable pour l'onglet logement actif dans la vue locataires
 let _locActiveLog = null;
+let _locCalYear = new Date().getFullYear();
 
 function renderLocataires(){
   const locs=loadLocataires();
@@ -2954,29 +2992,78 @@ function renderLocataires(){
     if(payeCeMois)alertes.push({type:'green',msg:'Loyer du mois encaissé ✓'});
   }
 
-  // Calendrier des paiements (12 mois glissants)
+  // Années disponibles pour ce logement (depuis l'entrée du plus ancien locataire)
+  const allLocsForLog=locs.filter(l=>l.logement===lg.key).sort((a,b)=>(a.dateEntree||'').localeCompare(b.dateEntree||''));
+  const firstYear=allLocsForLog.length>0?(+allLocsForLog[0].dateEntree?.slice(0,4)||2022):2022;
+  const calYear=Math.max(firstYear,Math.min(_locCalYear,new Date().getFullYear()));
+  const years=[];for(let yy=firstYear;yy<=new Date().getFullYear();yy++)years.push(yy);
+
+  // Calendrier de l'année sélectionnée
   const calHtml=()=>{
     const months=[];
-    for(let i=11;i>=0;i--){
-      const d=new Date(y,m-1-i,1);
-      const dMk=monthKey(d.getFullYear(),d.getMonth()+1);
-      months.push(dMk);
+    for(let mi=1;mi<=12;mi++){
+      months.push({mi,dMk:monthKey(calYear,mi)});
     }
-    return`<div class="loc-calendar-grid">${months.map(dMk=>{
-      if(!cur){return`<div class="loc-cal-cell loc-cal-vacant" title="${dMk}">—</div>`;}
-      const isOcc=getMonthsOccupied(cur).includes(dMk);
-      const pp=(cur.paiements||{})[dMk];
+    const MOIS=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+    // Trouver quel locataire était actif pour chaque mois
+    const getPaieInfo=(dMk)=>{
+      const locForMonth=allLocsForLog.find(l=>isLocataireActifAt(l,dMk+'-15'));
+      if(!locForMonth)return{vacant:true};
+      const pp=(locForMonth.paiements||{})[dMk];
       const isFutur=dMk>mk;
-      const label=dMk.slice(5);
-      if(!isOcc)return`<div class="loc-cal-cell loc-cal-vacant" title="${dMk}">○</div>`;
-      if(isFutur)return`<div class="loc-cal-cell loc-cal-futur" title="${dMk}">${label}</div>`;
-      if(pp&&pp.paye)return`<div class="loc-cal-cell loc-cal-paye" title="${dMk} — Payé le ${pp.date||'?'}" onclick="modifierDatePaiement('${cur.id}','${dMk}')">${label}</div>`;
-      return`<div class="loc-cal-cell loc-cal-impaye" title="${dMk} — Non payé" onclick="marquerPaye('${cur.id}','${dMk}')">${label}</div>`;
-    }).join('')}</div>
-    <div style="display:flex;gap:12px;font-size:10px;color:var(--text3);margin-top:4px">
+      return{locForMonth,pp,isFutur};
+    };
+    return`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <button class="btn btn-sm" onclick="_locCalYear=${calYear-1};renderLocataires()" ${calYear<=firstYear?'disabled':''}>‹ ${calYear-1}</button>
+      <span style="font-size:13px;font-weight:700;color:var(--accent)">${calYear}</span>
+      <button class="btn btn-sm" onclick="_locCalYear=${calYear+1};renderLocataires()" ${calYear>=new Date().getFullYear()?'disabled':''}>›</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(12,1fr);gap:4px">
+      ${months.map(({mi,dMk})=>{
+        const info=getPaieInfo(dMk);
+        if(info.vacant)return`<div class="loc-cal-cell loc-cal-vacant" title="${MOIS[mi-1]} ${calYear} — Vacant">○</div>`;
+        if(info.isFutur)return`<div class="loc-cal-cell loc-cal-futur" title="${MOIS[mi-1]} ${calYear}">${MOIS[mi-1]}</div>`;
+        if(info.pp&&info.pp.paye)return`<div class="loc-cal-cell loc-cal-paye" title="${MOIS[mi-1]} — Payé${info.pp.date?' le '+fmtDate(info.pp.date):''}" onclick="modifierDatePaiement('${info.locForMonth.id}','${dMk}')">${MOIS[mi-1]}</div>`;
+        return`<div class="loc-cal-cell loc-cal-impaye" title="${MOIS[mi-1]} — Non payé — cliquer pour encaisser" onclick="marquerPayeAvecDate('${info.locForMonth.id}','${dMk}')">${MOIS[mi-1]}</div>`;
+      }).join('')}
+    </div>
+    <div style="display:flex;gap:12px;font-size:10px;color:var(--text3);margin-top:8px">
       <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(104,211,145,.25);margin-right:4px"></span>Payé</span>
-      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(252,129,129,.2);margin-right:4px"></span>Impayé (cliquer pour marquer)</span>
+      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(252,129,129,.2);margin-right:4px"></span>Impayé (cliquer)</span>
       <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;border:1px dashed var(--border);margin-right:4px"></span>Vacant</span>
+    </div>
+    ${years.length>1?`<div style="margin-top:10px;display:flex;gap:4px;flex-wrap:wrap">${years.map(yy=>`<button class="btn btn-sm" style="${yy===calYear?'background:var(--accent);color:#0a0e1a;border-color:var(--accent)':''}" onclick="_locCalYear=${yy};renderLocataires()">${yy}</button>`).join('')}</div>`:''}`;
+  };
+
+  // Section historique tous les locataires du logement
+  const historiqueHtml=()=>{
+    if(!allLocsForLog.length)return'';
+    return`<div class="table-wrap" style="padding:20px 22px;margin-top:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text2)">📋 Historique des locataires</div>
+        <button class="btn btn-sm" onclick="openLocModal(null,'${lg.key}')">+ Ajouter ancien locataire</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${allLocsForLog.slice().reverse().map(l=>{
+          const isActif=isLocataireActifAt(l,todayStr());
+          const initLoc=l.nom?l.nom.split(' ').map(p=>p[0]).join('').toUpperCase().slice(0,2):'?';
+          const montantLoc=(+l.loyerHC||0)+(+l.charges||0);
+          const nbPaieOk=Object.values(l.paiements||{}).filter(p=>p.paye).length;
+          const nbPaieTot=getMonthsOccupied(l).length;
+          return`<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(255,255,255,.03);border-radius:10px;border:1px solid ${isActif?lg.color+'44':'var(--border)'}">
+            <div style="width:36px;height:36px;border-radius:50%;background:${isActif?lg.color+'22':'rgba(255,255,255,.06)'};color:${isActif?lg.color:'var(--text3)'};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${initLoc}</div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:600;color:var(--text)">${l.nom||'—'} ${isActif?'<span style="font-size:10px;color:'+lg.color+';margin-left:6px">● Actuel</span>':''}</div>
+              <div style="font-size:11px;color:var(--text3)">${fmtDate(l.dateEntree)} → ${l.dateSortie?fmtDate(l.dateSortie):'en cours'} · ${fmt(montantLoc)}/mois</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-size:12px;font-weight:600;color:${nbPaieOk===nbPaieTot?'#68d391':'#f6ad55'}">${nbPaieOk}/${nbPaieTot} loyers</div>
+              <div style="font-size:10px;color:var(--text3)">payés</div>
+            </div>
+            <button class="btn btn-sm btn-edit" onclick="openLocModal('${l.id}')" style="flex-shrink:0">✏</button>
+          </div>`;
+        }).join('')}
+      </div>
     </div>`;
   };
 
@@ -3041,7 +3128,8 @@ function renderLocataires(){
       <button class="btn btn-sm" onclick="openLocModal(null,'${lg.key}')">+ Nouveau locataire</button>
       <button class="btn-export" onclick="exportLoyersCSV()">📊 Export CSV</button>
       <button class="btn-export" style="background:rgba(246,173,85,.1);border-color:rgba(246,173,85,.4);color:var(--orange)" onclick="exportLoyersPDF()">📄 Export PDF</button>
-    </div>`
+    </div>
+    ${historiqueHtml()}`
 
     :`<div class="loc-vacant-card">
       <div style="font-size:48px;margin-bottom:16px">🏠</div>
@@ -3052,17 +3140,31 @@ function renderLocataires(){
   `;
 }
 
-// Marquer un mois comme payé rapidement depuis le calendrier
-function marquerPaye(locId,mk){
+// Marquer un mois comme payé avec saisie de date
+function marquerPayeAvecDate(locId,mk){
   const locs=loadLocataires();
   const loc=locs.find(l=>l.id===locId);
   if(!loc)return;
   if(!loc.paiements)loc.paiements={};
-  const dateStr=todayStr();
-  loc.paiements[mk]={paye:true,date:dateStr};
+  // Proposer la date du 1er du mois par défaut
+  const defaultDate=mk+'-01';
+  const parts=mk.split('-');
+  const defaultFmt=`01/${parts[1]}/${parts[0]}`;
+  const dateInput=window.prompt?window.prompt(`Date de paiement pour ${mk} (JJ/MM/AAAA) :`,defaultFmt):defaultFmt;
+  if(dateInput===null)return;
+  let isoDate=defaultDate;
+  if(dateInput){
+    const dp=dateInput.trim().split('/');
+    if(dp.length===3)isoDate=`${dp[2]}-${dp[1].padStart(2,'0')}-${dp[0].padStart(2,'0')}`;
+  }
+  loc.paiements[mk]={paye:true,date:isoDate};
   saveLocataires(locs);
   renderLocataires();
 }
+
+// Garder l'ancienne pour compatibilité
+function marquerPaye(locId,mk){marquerPayeAvecDate(locId,mk);}
+
 
 // Modal rapide pour encaisser le loyer du mois
 function ouvrirModalAjoutPaiement(locId,mk){
@@ -3274,9 +3376,11 @@ function getLoyersEncaissesByMonth(locs,year){
 }
 // Loyers dus / encaissés par logement, sur une année
 function getLoyersByLogementYear(locs,year){
-  const res={A:{du:0,encaisse:0},B:{du:0,encaisse:0},C:{du:0,encaisse:0}};
+  const res={};
+  // Init avec tous les logements actifs du contexte
+  getLogementsActifs().forEach(lg=>{res[lg.key]={du:0,encaisse:0};});
   locs.forEach(l=>{
-    if(!res[l.logement])return;
+    if(res[l.logement]===undefined)res[l.logement]={du:0,encaisse:0};
     const montant=(+l.loyerHC||0)+(+l.charges||0);
     getMonthsOccupied(l).forEach(mk=>{
       if(mk.slice(0,4)===String(year)){
@@ -3291,6 +3395,153 @@ function getLoyersByLogementYear(locs,year){
 // Occupation sur une année civile
 function getOccupationYear(logKey,year){
   return occupiedDays(logKey,year+'-01-01',year+'-12-31');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PARAMÈTRES — Gestion des logements
+// ─────────────────────────────────────────────────────────────────────────────
+const LOG_COLORS=['#63b3ed','#68d391','#f6ad55','#b794f4','#fc8181','#f687b3','#76e4f7','#fbd38d'];
+
+function renderParametres(){
+  const container=document.getElementById('parametres-container');
+  if(!container)return;
+  const logs=loadLogements();
+  const cfg=CTX_CONFIG[CTX];
+
+  container.innerHTML=`
+    <div class="section-title">⚙️ Paramètres — ${cfg.nom}</div>
+
+    <!-- Logements -->
+    <div class="table-wrap" style="padding:24px;margin-bottom:24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--text)">🏠 Logements</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${logs.filter(l=>l.actif!==false).length} actif(s) · ${logs.filter(l=>l.actif===false).length} masqué(s)</div>
+        </div>
+        <button class="btn" onclick="ouvrirModalLogement(null)" style="background:var(--accent);color:#0a0e1a;border-color:var(--accent)">+ Ajouter un logement</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px" id="param-logs-list">
+        ${logs.map((lg,i)=>`
+          <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;background:rgba(255,255,255,.03);border:1px solid ${lg.actif!==false?lg.color+'44':'var(--border)'};border-radius:12px;opacity:${lg.actif!==false?1:.5}">
+            <div style="width:14px;height:14px;border-radius:50%;background:${lg.color};flex-shrink:0"></div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:600;color:var(--text)">${lg.label}</div>
+              ${lg.adresse?`<div style="font-size:11px;color:var(--text3)">${lg.adresse}</div>`:''}
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              ${i>0?`<button class="btn btn-sm" onclick="deplacerLogement(${i},-1)" title="Monter">↑</button>`:''}
+              ${i<logs.length-1?`<button class="btn btn-sm" onclick="deplacerLogement(${i},1)" title="Descendre">↓</button>`:''}
+              <button class="btn btn-sm btn-edit" onclick="ouvrirModalLogement(${i})">✏</button>
+              <button class="btn btn-sm" onclick="toggleLogement(${i})" style="${lg.actif!==false?'':'background:rgba(104,211,145,.1);border-color:rgba(104,211,145,.3);color:#68d391'}">
+                ${lg.actif!==false?'👁 Masquer':'👁 Afficher'}
+              </button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <!-- Infos contexte -->
+    <div class="table-wrap" style="padding:24px;margin-bottom:24px">
+      <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:16px">📧 Compte Google</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px">
+        <div><span style="color:var(--text3)">Gmail / Drive :</span> <strong>${cfg.gmail}</strong></div>
+        <div><span style="color:var(--text3)">Dossier Drive :</span> <strong>${cfg.driveFolderName}</strong></div>
+      </div>
+    </div>
+
+    <!-- Danger zone -->
+    <div class="table-wrap" style="padding:24px;border:1px solid rgba(252,129,129,.2)">
+      <div style="font-size:14px;font-weight:700;color:#fc8181;margin-bottom:12px">⚠ Zone dangereuse</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-sm" style="border-color:rgba(252,129,129,.4);color:#fc8181;background:rgba(252,129,129,.08)" onclick="resetLogementsDefaut()">↺ Réinitialiser les logements par défaut</button>
+        <button class="btn btn-sm" style="border-color:rgba(252,129,129,.4);color:#fc8181;background:rgba(252,129,129,.08)" onclick="purgeLmnpData()">🗑 Purger toutes les données ${cfg.nom}</button>
+      </div>
+    </div>
+
+    <!-- Modale logement -->
+    <div id="modal-logement" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center">
+      <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:28px;width:420px;max-width:90vw">
+        <h2 id="modal-log-title" style="margin:0 0 20px">Logement</h2>
+        <div class="form-grid">
+          <div class="form-group"><label>Nom du logement *</label><input id="ml-label" type="text" placeholder="ex: Appartement T2, Studio..."></div>
+          <div class="form-group"><label>Adresse</label><input id="ml-adresse" type="text" placeholder="ex: 12 rue de la Paix, 85000 ..."></div>
+          <div class="form-group"><label>Couleur</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px" id="ml-colors">
+              ${LOG_COLORS.map(c=>`<div onclick="selectLogColor('${c}')" style="width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:2px solid transparent;transition:.15s" data-color="${c}"></div>`).join('')}
+            </div>
+            <input type="hidden" id="ml-color" value="${LOG_COLORS[0]}">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
+          <button class="btn btn-sm" style="background:var(--bg3);border-color:var(--border)" onclick="document.getElementById('modal-logement').style.display='none'">Annuler</button>
+          <button class="btn btn-sm" onclick="sauvegarderLogement()" style="background:var(--accent);color:#0a0e1a;border-color:var(--accent)">Enregistrer</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+let _editLogIdx=null;
+function ouvrirModalLogement(idx){
+  _editLogIdx=idx;
+  const logs=loadLogements();
+  const lg=idx!==null?logs[idx]:null;
+  document.getElementById('modal-log-title').textContent=lg?'Modifier le logement':'Nouveau logement';
+  document.getElementById('ml-label').value=lg?lg.label:'';
+  document.getElementById('ml-adresse').value=lg?lg.adresse||'':'';
+  const color=lg?lg.color:LOG_COLORS[0];
+  document.getElementById('ml-color').value=color;
+  selectLogColor(color);
+  document.getElementById('modal-logement').style.display='flex';
+  setTimeout(()=>document.getElementById('ml-label').focus(),50);
+}
+function selectLogColor(c){
+  document.getElementById('ml-color').value=c;
+  document.querySelectorAll('#ml-colors [data-color]').forEach(el=>{
+    el.style.border=el.dataset.color===c?'2px solid white':'2px solid transparent';
+    el.style.transform=el.dataset.color===c?'scale(1.2)':'scale(1)';
+  });
+}
+function sauvegarderLogement(){
+  const label=document.getElementById('ml-label').value.trim();
+  if(!label){document.getElementById('ml-label').style.borderColor='var(--red)';return;}
+  const adresse=document.getElementById('ml-adresse').value.trim();
+  const color=document.getElementById('ml-color').value;
+  const logs=loadLogements();
+  if(_editLogIdx!==null){
+    logs[_editLogIdx]={...logs[_editLogIdx],label,adresse,color};
+  }else{
+    // Générer une clé unique
+    const key='L'+(Date.now().toString(36).slice(-4).toUpperCase());
+    logs.push({key,label,adresse,color,actif:true});
+  }
+  saveLogements(logs);
+  document.getElementById('modal-logement').style.display='none';
+  renderParametres();
+  // Recharger l'app pour appliquer les nouveaux logements partout
+  setTimeout(()=>location.reload(),800);
+}
+function toggleLogement(idx){
+  const logs=loadLogements();
+  if(!logs[idx])return;
+  logs[idx].actif=logs[idx].actif===false?true:false;
+  saveLogements(logs);
+  renderParametres();
+  setTimeout(()=>location.reload(),600);
+}
+function deplacerLogement(idx,dir){
+  const logs=loadLogements();
+  const newIdx=idx+dir;
+  if(newIdx<0||newIdx>=logs.length)return;
+  [logs[idx],logs[newIdx]]=[logs[newIdx],logs[idx]];
+  saveLogements(logs);
+  renderParametres();
+}
+function resetLogementsDefaut(){
+  if(!confirm('Réinitialiser les logements par défaut ? Les données des locataires ne seront pas effacées.'))return;
+  localStorage.removeItem(ctxKey('logements_config'));
+  location.reload();
 }
 
 function renderCoutRevient(){
@@ -3350,20 +3601,23 @@ function renderRentabilite(){
   yearSel.innerHTML=sortedYears.map(y=>`<option value="${y}">${y}</option>`).join('');
   yearSel.value=(prevVal&&sortedYears.includes(+prevVal))?prevVal:String(curYear);
   const year=+yearSel.value;
+  const cfg=getCTXConfig();
+  const logs=cfg.logements;
 
   const loyers=getLoyersByLogementYear(locs,year);
   const charges=getReelTotalsByYear(factures,year);
 
   let totalEnc=0,totalDu=0,totalCharges=0,occSum=0;
-  ['A','B','C'].forEach(k=>{
-    totalEnc+=loyers[k].encaisse;
-    totalDu+=loyers[k].du;
-    totalCharges+=charges['Logement '+k]||0;
-    const{occupied,total}=getOccupationYear(k,year);
-    occSum+=occupied/total;
+  logs.forEach(lg=>{
+    const ld=loyers[lg.key]||{encaisse:0,du:0};
+    totalEnc+=ld.encaisse;
+    totalDu+=ld.du;
+    totalCharges+=charges[lg.label]||0;
+    const{occupied,total}=getOccupationYear(lg.key,year);
+    occSum+=occupied/(total||1);
   });
   const cashflow=totalEnc-totalCharges;
-  const occPct=Math.round(occSum/3*100);
+  const occPct=Math.round(occSum/logs.length*100);
 
   document.getElementById('rent-kpi-grid').innerHTML=`
     <div class="kpi" style="--kpi-color:#63b3ed">
@@ -3387,14 +3641,15 @@ function renderRentabilite(){
       <div class="kpi-sub">moyenne ${year}</div>
     </div>`;
 
-  // Tableau par logement
+  // Tableau par logement — dynamique
   let rows='';
-  ['A','B','C'].forEach(k=>{
-    const enc=loyers[k].encaisse, du=loyers[k].du, ch=charges['Logement '+k]||0;
+  logs.forEach(lg=>{
+    const ld=loyers[lg.key]||{encaisse:0,du:0};
+    const enc=ld.encaisse,du=ld.du,ch=charges[lg.label]||0;
     const cf=enc-ch;
-    const{occupied,total}=getOccupationYear(k,year);
+    const{occupied,total}=getOccupationYear(lg.key,year);
     rows+=`<tr>
-      <td><span class="log-badge log-${k.toLowerCase()}">Logement ${k}</span></td>
+      <td><span style="background:${lg.color}22;color:${lg.color};padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600">${lg.label}</span></td>
       <td style="text-align:right" class="amount">${fmt(enc)}</td>
       <td style="text-align:right" class="amount prev">${fmt(du)}</td>
       <td style="text-align:right" class="amount">${fmt(ch)}</td>
@@ -4093,82 +4348,126 @@ function genererQuittance(locId,mk){
 }
 
 // ── GESTION LOCATIVE — rendu synthèse + détail par logement ───────────────
+let _glActiveLog=null;
+
 function renderGestionLocative(){
-  const yearSel=document.getElementById('gl-logement-select');
-  if(yearSel&&yearSel.options.length===0){
-    yearSel.innerHTML=LOC_LOGEMENTS.map(lg=>`<option value="${lg.key}">Logement ${lg.key}</option>`).join('');
+  const logs=getCTXConfig().logements;
+  if(!_glActiveLog||!logs.find(l=>l.key===_glActiveLog))_glActiveLog=logs[0]?.key||null;
+
+  const todayS=todayStr();
+
+  // CSS futuriste GL
+  if(!document.getElementById('gl-futur-style')){
+    const st=document.createElement('style');
+    st.id='gl-futur-style';
+    st.textContent=`
+      .gl-tab-bar{display:flex;gap:0;border-bottom:2px solid var(--border2);margin-bottom:24px;overflow-x:auto}
+      .gl-tab-btn{padding:10px 20px;font-size:12px;font-weight:700;letter-spacing:.4px;border:none;background:transparent;color:var(--text3);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;transition:all .2s;white-space:nowrap;text-transform:uppercase}
+      .gl-tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);background:rgba(99,179,237,.05)}
+      .gl-doc-card{display:flex;align-items:center;gap:12px;padding:14px 18px;background:rgba(255,255,255,.03);border-radius:12px;border:1px solid var(--border);transition:all .2s;margin-bottom:8px}
+      .gl-doc-card:hover{border-color:var(--border2);background:rgba(255,255,255,.05)}
+      .gl-doc-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+      .gl-status-ok{background:rgba(104,211,145,.15);border:1px solid rgba(104,211,145,.35);color:#68d391;padding:3px 10px;border-radius:12px;font-size:10px;font-weight:600}
+      .gl-status-warn{background:rgba(246,173,85,.12);border:1px solid rgba(246,173,85,.35);color:#f6ad55;padding:3px 10px;border-radius:12px;font-size:10px;font-weight:600}
+      .gl-status-expire{background:rgba(252,129,129,.12);border:1px solid rgba(252,129,129,.35);color:#fc8181;padding:3px 10px;border-radius:12px;font-size:10px;font-weight:600}
+      .gl-status-none{background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--text3);padding:3px 10px;border-radius:12px;font-size:10px;font-weight:600}
+      .gl-cat-header{display:flex;justify-content:space-between;align-items:center;padding:10px 0 8px;border-bottom:1px solid var(--border2);margin-bottom:10px}
+    `;
+    document.head.appendChild(st);
   }
-  const cards=LOC_LOGEMENTS.map(lg=>{
+
+  const synthCards=logs.map(lg=>{
     const cur=getCurrentLocataire(lg.key);
-    const actif=cur&&isLocataireActifAt(cur,todayStr());
+    const actif=cur&&isLocataireActifAt(cur,todayS);
     const docs=glDocsForLogement(lg.key);
-    const alertes=docs.filter(d=>{const s=glDocStatus(d);return s==='expire'||s==='bientot';});
-    const manquants=GL_CATEGORIES.filter(c=>c.key!=='autre'&&!docs.some(d=>d.categorie===c.key));
-    return`<div style="background:rgba(255,255,255,.03);border:1px solid var(--border2);border-radius:10px;padding:14px 18px;cursor:pointer" onclick="document.getElementById('gl-logement-select').value='${lg.key}';renderGestionLocativeDetail();document.getElementById('gl-detail').scrollIntoView({behavior:'smooth'})">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <div style="display:flex;align-items:center;gap:12px">
-          <span class="log-badge log-${lg.key.toLowerCase()}">Logement ${lg.key}</span>
-          <span style="font-weight:600">${actif?cur.nom:'Vacant'}</span>
+    const alertes=docs.filter(d=>{const s=glDocStatus(d);return s==='expire'||s==='bientot';}).length;
+    const manquants=GL_CATEGORIES.filter(c=>c.key!=='autre'&&!docs.some(d=>d.categorie===c.key)).length;
+    const scoreColor=alertes>0?'#fc8181':manquants>0?'#f6ad55':'#68d391';
+    const scoreLabel=alertes>0?alertes+' alerte(s)':manquants>0?manquants+' doc(s) manquant(s)':'Complet ✓';
+    return`<div style="background:rgba(255,255,255,.03);border:1px solid ${lg.color}33;border-radius:14px;padding:18px;cursor:pointer;transition:all .2s${_glActiveLog===lg.key?';border-color:'+lg.color+';background:'+lg.color+'08':''}" onclick="_glActiveLog='${lg.key}';renderGestionLocative()">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+        <div>
+          <div style="font-size:11px;font-weight:700;color:${lg.color};text-transform:uppercase;letter-spacing:.5px">${lg.label}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-top:2px">${actif?cur.nom:'Vacant'}</div>
         </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
-          ${alertes.map(d=>`<span class="status-pill ${glDocStatus(d)==='expire'?'over':'warn'}">${GL_CATEGORIES.find(c=>c.key===d.categorie)?.label||d.categorie} ${glDocStatus(d)==='expire'?'expiré':'à renouveler'}</span>`).join('')}
-          ${manquants.map(c=>`<span class="status-pill none">${c.label} manquant</span>`).join('')}
-          ${alertes.length===0&&manquants.length===0?`<span class="status-pill ok">Documents à jour</span>`:''}
-        </div>
+        <span style="color:${scoreColor};font-size:11px;font-weight:600">${scoreLabel}</span>
       </div>
+      <div style="font-size:11px;color:var(--text3)">${docs.length} document(s) enregistré(s)</div>
     </div>`;
   }).join('');
-  document.getElementById('gl-synthese-cards').innerHTML=cards;
+
+  const tabBar=`<div class="gl-tab-bar">
+    ${logs.map(lg=>`<button class="gl-tab-btn ${_glActiveLog===lg.key?'active':''}" onclick="_glActiveLog='${lg.key}';renderGestionLocative()" style="${_glActiveLog===lg.key?'--accent:'+lg.color:''}">${lg.label}</button>`).join('')}
+  </div>`;
+
+  const container=document.getElementById('gl-synthese-cards');
+  if(container)container.innerHTML=`<div style="display:grid;grid-template-columns:repeat(${logs.length},1fr);gap:14px;margin-bottom:24px">${synthCards}</div>${tabBar}`;
+
   renderGestionLocativeDetail();
 }
 
 function renderGestionLocativeDetail(){
-  const logKey=document.getElementById('gl-logement-select').value;
-  const lg=LOC_LOGEMENTS.find(l=>l.key===logKey);
+  const logs=getCTXConfig().logements;
+  const logKey=_glActiveLog||logs[0]?.key;
+  const lg=logs.find(l=>l.key===logKey)||logs[0];
+  if(!lg)return;
   const cur=getCurrentLocataire(logKey);
   const actif=cur&&isLocataireActifAt(cur,todayStr());
   const docs=glDocsForLogement(logKey);
 
   const docsHtml=GL_CATEGORIES.map(cat=>{
     const docsCat=docs.filter(d=>d.categorie===cat.key);
+    const catIcons={'bail':'📄','etat-des-lieux':'🔑','assurance':'🛡','dpe':'🌡','autre':'📎'};
+    const icon=catIcons[cat.key]||'📎';
     const lignes=docsCat.length?docsCat.map(d=>{
       const s=glDocStatus(d);
-      const cls=s==='expire'?'over':(s==='bientot'?'warn':(s==='ok'?'ok':'none'));
-      const label=s==='expire'?'Expiré':(s==='bientot'?'À renouveler bientôt':(s==='ok'?'Valide':''));
-      return`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border2)">
-        <div>
-          <a href="${d.lien}" target="_blank" style="color:var(--accent);font-weight:500">${d.libelle||cat.label}</a>
-          ${d.dateExpiration?`<span style="font-size:10px;color:var(--text3);margin-left:8px">Expire le ${fmtDateLong(d.dateExpiration)}</span>`:''}
-          ${label?`<span class="status-pill ${cls}" style="margin-left:8px">${label}</span>`:''}
+      const statusHtml=s==='expire'?`<span class="gl-status-expire">⚠ Expiré</span>`:
+        s==='bientot'?`<span class="gl-status-warn">⚡ À renouveler</span>`:
+        s==='ok'?`<span class="gl-status-ok">✓ Valide</span>`:
+        `<span class="gl-status-none">Pas de date</span>`;
+      return`<div class="gl-doc-card">
+        <div class="gl-doc-icon" style="background:${lg.color}18;color:${lg.color}">${icon}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--text)">${d.libelle||cat.label}</div>
+          ${d.dateExpiration?'<div style="font-size:11px;color:var(--text3)">Expire le '+fmtDateLong(d.dateExpiration)+'</div>':''}
         </div>
-        <div style="display:flex;gap:6px">
-          <button class="btn-pdf-view" onclick="glEnvoyerMail('${d.id}')" title="Préparer un email avec ce document">✉️</button>
-          <button class="btn btn-sm btn-edit" onclick="glOpenDocModal('${d.id}')">Modifier</button>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          ${statusHtml}
+          <a href="${d.lien}" target="_blank" class="btn btn-sm" style="text-decoration:none" title="Ouvrir">☁</a>
+          <button class="btn btn-sm" onclick="glEnvoyerMail('${d.id}')" title="Envoyer par mail">✉</button>
+          <button class="btn btn-sm btn-edit" onclick="glOpenDocModal('${d.id}')">✏</button>
           <button class="btn btn-sm btn-danger" onclick="glSupprimerDoc('${d.id}')">×</button>
         </div>
       </div>`;
-    }).join(''):`<div style="padding:8px 0;color:var(--text3);font-size:12px">Aucun document — <a style="color:var(--accent);cursor:pointer" onclick="glOpenDocModal(null,'${logKey}','${cat.key}')">en ajouter un</a></div>`;
-    return`<div style="margin-bottom:16px">
-      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;display:flex;justify-content:space-between">
-        <span>${cat.label}</span>
-        <button class="btn btn-sm" onclick="glOpenDocModal(null,'${logKey}','${cat.key}')">+ Ajouter</button>
+    }).join(''):`<div style="padding:12px 0;color:var(--text3);font-size:12px;text-align:center;border:1px dashed var(--border);border-radius:10px;margin-bottom:8px">
+      Aucun document — <a style="color:var(--accent);cursor:pointer" onclick="glOpenDocModal(null,'${logKey}','${cat.key}')">+ En ajouter un</a>
+    </div>`;
+    return`<div style="margin-bottom:20px">
+      <div class="gl-cat-header">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:16px">${icon}</span>
+          <span style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">${cat.label}</span>
+          ${docsCat.length?`<span style="font-size:10px;background:rgba(255,255,255,.06);padding:2px 8px;border-radius:10px;color:var(--text3)">${docsCat.length}</span>`:''}
+        </div>
+        <button class="btn btn-sm" onclick="glOpenDocModal(null,'${logKey}','${cat.key}')" style="font-size:11px">+ Ajouter</button>
       </div>
       ${lignes}
     </div>`;
   }).join('');
 
-  document.getElementById('gl-detail').innerHTML=`
-    <div style="background:rgba(255,255,255,.03);border:1px solid var(--border2);border-radius:10px;padding:18px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-        <div>
-          <span class="log-badge log-${logKey.toLowerCase()}">Logement ${logKey}</span>
-          <span style="font-weight:600;margin-left:8px">${actif?cur.nom:'Vacant'}</span>
-          <span style="font-size:10px;color:var(--text3);margin-left:8px">${lg.adresse}</span>
+  const detailEl=document.getElementById('gl-detail');
+  if(!detailEl)return;
+  detailEl.innerHTML=`
+    <div class="table-wrap" style="padding:22px 26px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:44px;height:44px;border-radius:12px;background:${lg.color}22;color:${lg.color};display:flex;align-items:center;justify-content:center;font-size:20px">🏠</div>
+          <div>
+            <div style="font-size:15px;font-weight:700;color:${lg.color}">${lg.label}</div>
+            <div style="font-size:12px;color:var(--text2)">${actif?cur.nom+' · Locataire actif':'Vacant'}${lg.adresse?' · '+lg.adresse:''}</div>
+          </div>
         </div>
-        ${actif?`<div style="display:flex;gap:6px">
-          <button class="btn-export" onclick="glEnvoyerQuittanceMail('${cur.id}',this)">✉️ Envoyer dernière quittance</button>
-          <button class="btn-export" style="background:rgba(246,173,85,.1);border-color:rgba(246,173,85,.4);color:var(--orange)" onclick="glDemanderJustificatif('${cur.id}')">✉️ Demander justificatif assurance</button>
-        </div>`:''}
+        <button class="btn" onclick="glOpenDocModal(null,'${logKey}','autre')" style="background:${lg.color};color:#0a0e1a;border-color:${lg.color}">+ Nouveau document</button>
       </div>
       ${docsHtml}
     </div>`;
