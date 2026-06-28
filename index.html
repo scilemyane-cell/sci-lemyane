@@ -420,22 +420,23 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 
 <!-- RENTABILITE -->
 <div class="content" id="tab-rentabilite">
-  <div class="filters">
-    <select class="filter-select" id="rent-year-select" onchange="renderRentabilite()"></select>
+  <div class="filters" style="flex-wrap:wrap;gap:10px">
+    <select class="filter-select" id="rent-year-select" onchange="renderRentabilite()">
+      <option value="">Chargement...</option>
+    </select>
+    <div style="display:flex;gap:6px;flex-wrap:wrap" id="rent-quick-years"></div>
+    <div style="flex:1"></div>
+    <button class="btn-export" onclick="exportLoyersCSV(document.getElementById('rent-year-select')?.value==='all'?new Date().getFullYear():+(document.getElementById('rent-year-select')?.value||new Date().getFullYear()))">📊 Export CSV</button>
+    <button class="btn-export" style="background:rgba(246,173,85,.1);border-color:rgba(246,173,85,.4);color:var(--orange)" onclick="exportLoyersPDF(document.getElementById('rent-year-select')?.value==='all'?new Date().getFullYear():+(document.getElementById('rent-year-select')?.value||new Date().getFullYear()))">📄 Export PDF</button>
   </div>
   <div class="kpi-grid" id="rent-kpi-grid"></div>
 
-  <div class="section-title">Rentabilité par logement</div>
+  <div class="section-title">Bilan par logement</div>
   <div class="table-wrap" style="overflow-x:auto;margin-bottom:24px">
-    <table class="factures-table" id="rent-table"></table>
+    <table class="factures-table" id="rent-bilan-table"></table>
   </div>
 
-  <div class="charts-grid" style="grid-template-columns:1fr">
-    <div class="chart-card">
-      <div class="chart-title">Cash-flow mensuel — Loyers encaissés vs Charges réelles</div>
-      <div class="chart-canvas" style="height:240px"><canvas id="chart-rent-cashflow"></canvas></div>
-    </div>
-  </div>
+  <div id="rent-annuel-section"></div>
 </div>
 
 <!-- PROJECTION -->
@@ -3288,7 +3289,9 @@ function ouvrirModalPaiement(locId, mk, logKeyOverride){
 function mplChangerLocataire(newLocId, mk){
   const modal=document.getElementById('modal-paiement-loyer');
   if(!modal)return;
-  modal._locId=newLocId;
+  // Mettre à jour le locId stocké sur la modale — CRITIQUE
+  modal._locId=String(newLocId);
+
   const champs=document.getElementById('mpl-champs-paiement');
   const vacantInfo=document.getElementById('mpl-vacant-info');
 
@@ -3305,14 +3308,11 @@ function mplChangerLocataire(newLocId, mk){
   if(!loc)return;
   const existing=(loc.paiements||{})[mk]||{};
   const montant=existing.montant||loc.lastMontantLoyer||getMontantPeriode(loc,mk).total;
-  const date=existing.date||mk+'-01';
+  const date=existing.date||(loc.lastPaiement?.dateTemplate)||mk+'-01';
   const elM=document.getElementById('mpl-montant');
   const elD=document.getElementById('mpl-date');
   if(elM)elM.value=montant;
   if(elD)elD.value=date;
-  // Mettre à jour la référence période
-  const ref=document.querySelector('#mpl-champs-paiement .form-group:first-child div');
-  if(ref)ref.textContent='Référence période : '+fmt(getMontantPeriode(loc,mk).total);
 }
 
 function fermerModalPaiement(){
@@ -3801,109 +3801,129 @@ function renderCoutRevient(){
 function renderRentabilite(){
   const{factures}=loadData();
   const locs=loadLocataires();
-  const yearSel=document.getElementById('rent-year-select');
-  const now=new Date();
-  const curYear=now.getFullYear();
-  const years=new Set([curYear-1,curYear,curYear+1]);
-  factures.forEach(f=>{if(f.date)years.add(+f.date.slice(0,4));});
-  locs.forEach(l=>{
-    if(l.dateEntree)years.add(+l.dateEntree.slice(0,4));
-    if(l.dateSortie)years.add(+l.dateSortie.slice(0,4));
-  });
-  const sortedYears=[...years].sort((a,b)=>a-b);
-  const prevVal=yearSel.value;
-  yearSel.innerHTML=sortedYears.map(y=>`<option value="${y}">${y}</option>`).join('');
-  yearSel.value=(prevVal&&sortedYears.includes(+prevVal))?prevVal:String(curYear);
-  const year=+yearSel.value;
   const cfg=getCTXConfig();
   const logs=cfg.logements;
+  const nowY=new Date().getFullYear();
 
-  const loyers=getLoyersByLogementYear(locs,year);
-  const charges=getReelTotalsByYear(factures,year);
+  // Sélecteur d'années — une case par année + "Toutes les années"
+  const yearSel=document.getElementById('rent-year-select');
+  const firstYear=locs.reduce((min,l)=>l.dateEntree?Math.min(min,+l.dateEntree.slice(0,4)):min,nowY);
+  if(yearSel&&yearSel.options.length===0){
+    yearSel.innerHTML='<option value="all">Toutes les années</option>'
+      +Array.from({length:nowY-firstYear+1},(_,i)=>nowY-i)
+        .map(y=>`<option value="${y}">${y}</option>`).join('');
+  }
+  const selVal=(yearSel?.value)||String(nowY);
+  const isAll=selVal==='all';
+  const years=isAll
+    ?Array.from({length:nowY-firstYear+1},(_,i)=>firstYear+i)
+    :[+selVal];
 
-  let totalEnc=0,totalDu=0,totalCharges=0,occSum=0;
-  logs.forEach(lg=>{
-    const ld=loyers[lg.key]||{encaisse:0,du:0};
-    totalEnc+=ld.encaisse;
-    totalDu+=ld.du;
-    totalCharges+=charges[lg.label]||0;
-    const{occupied,total}=getOccupationYear(lg.key,year);
-    occSum+=occupied/(total||1);
+  // Calculs cumulés sur les années sélectionnées
+  let totalEnc=0,totalDu=0,totalCharges=0,occSum=0,occCount=0;
+  const logementsData=logs.map(lg=>{
+    let enc=0,du=0,ch=0,occ=0,tot=0;
+    years.forEach(y=>{
+      const ld=getLoyersByLogementYear(locs,y);
+      const lKey=ld[lg.key]||{encaisse:0,du:0};
+      const chY=getReelTotalsByYear(factures,y);
+      enc+=lKey.encaisse;
+      du+=lKey.du;
+      ch+=chY[lg.label]||0;
+      const occY=getOccupationYear(lg.key,y);
+      if(occY.total>0){occ+=occY.occupied/occY.total;tot++;}
+    });
+    totalEnc+=enc;totalDu+=du;totalCharges+=ch;
+    if(tot>0){occSum+=occ/tot;occCount++;}
+    return{lg,enc,du,ch,cf:enc-ch,occ:tot>0?Math.round(occ/tot*100):0};
   });
-  const cashflow=totalEnc-totalCharges;
-  const occPct=Math.round(occSum/logs.length*100);
+  const cf=totalEnc-totalCharges;
+  const occPct=occCount>0?Math.round(occSum/occCount*100):0;
+  const label=isAll?('Toutes les années ('+firstYear+'-'+nowY+')'):(years[0]+' → '+years[years.length-1]);
 
   document.getElementById('rent-kpi-grid').innerHTML=`
     <div class="kpi" style="--kpi-color:#63b3ed">
-      <div class="kpi-label">Loyers encaissés ${year}</div>
+      <div class="kpi-label">Loyers encaissés</div>
       <div class="kpi-val">${fmt(totalEnc)}</div>
-      <div class="kpi-sub">sur ${fmt(totalDu)} dus</div>
+      <div class="kpi-sub">sur ${fmt(totalDu)} dus · ${label}</div>
     </div>
     <div class="kpi" style="--kpi-color:#fc8181">
-      <div class="kpi-label">Charges réelles ${year}</div>
+      <div class="kpi-label">Charges réelles</div>
       <div class="kpi-val">${fmt(totalCharges)}</div>
-      <div class="kpi-sub">factures incluses au projet</div>
+      <div class="kpi-sub">factures incluses</div>
     </div>
-    <div class="kpi" style="--kpi-color:${cashflow>=0?'#68d391':'#fc8181'}">
-      <div class="kpi-label">Cash-flow net ${year}</div>
-      <div class="kpi-val">${fmtE(cashflow)}</div>
+    <div class="kpi" style="--kpi-color:${cf>=0?'#68d391':'#fc8181'}">
+      <div class="kpi-label">Cash-flow net</div>
+      <div class="kpi-val">${fmtE(cf)}</div>
       <div class="kpi-sub">loyers encaissés − charges</div>
     </div>
     <div class="kpi" style="--kpi-color:#b794f4">
       <div class="kpi-label">Taux d'occupation</div>
       <div class="kpi-val">${occPct}%</div>
-      <div class="kpi-sub">moyenne ${year}</div>
+      <div class="kpi-sub">moyenne${isAll?' toutes années':''}</div>
     </div>`;
 
-  // Tableau par logement — dynamique
+  // Tableau par logement
   let rows='';
-  logs.forEach(lg=>{
-    const ld=loyers[lg.key]||{encaisse:0,du:0};
-    const enc=ld.encaisse,du=ld.du,ch=charges[lg.label]||0;
-    const cf=enc-ch;
-    const{occupied,total}=getOccupationYear(lg.key,year);
+  logementsData.forEach(({lg,enc,du,ch,cf:cfL,occ})=>{
     rows+=`<tr>
-      <td><span style="background:${lg.color}22;color:${lg.color};padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600">${lg.label}</span></td>
+      <td><span style="background:${lg.color}22;color:${lg.color};padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600">${lg.label}</span></td>
       <td style="text-align:right" class="amount">${fmt(enc)}</td>
       <td style="text-align:right" class="amount prev">${fmt(du)}</td>
       <td style="text-align:right" class="amount">${fmt(ch)}</td>
-      <td style="text-align:right" class="ecart ${cf>=0?'ok':'over'}">${fmtE(cf)}</td>
-      <td style="text-align:right">${total?Math.round(occupied/total*100):0}%</td>
+      <td style="text-align:right" class="ecart ${cfL>=0?'ok':'over'}">${fmtE(cfL)}</td>
+      <td style="text-align:right">${occ}%</td>
     </tr>`;
   });
-  rows+=`<tr style="font-weight:600;background:rgba(99,179,237,0.08)">
-    <td>Total</td>
-    <td style="text-align:right" class="amount">${fmt(totalEnc)}</td>
-    <td style="text-align:right" class="amount prev">${fmt(totalDu)}</td>
-    <td style="text-align:right" class="amount">${fmt(totalCharges)}</td>
-    <td style="text-align:right" class="ecart ${cashflow>=0?'ok':'over'}">${fmtE(cashflow)}</td>
-    <td style="text-align:right">${occPct}%</td>
+  rows+=`<tr style="background:rgba(255,255,255,.04);border-top:2px solid var(--border2)">
+    <td style="font-size:12px;font-weight:700;padding:8px 12px">TOTAL</td>
+    <td style="text-align:right;font-weight:700" class="amount">${fmt(totalEnc)}</td>
+    <td style="text-align:right;font-weight:700" class="amount prev">${fmt(totalDu)}</td>
+    <td style="text-align:right;font-weight:700" class="amount">${fmt(totalCharges)}</td>
+    <td style="text-align:right;font-weight:700" class="ecart ${cf>=0?'ok':'over'}">${fmtE(cf)}</td>
+    <td style="text-align:right;font-weight:700">${occPct}%</td>
   </tr>`;
-  document.getElementById('rent-table').innerHTML=`<thead><tr>
-    <th>Logement</th><th style="text-align:right">Loyers encaissés</th><th style="text-align:right">Loyers dus</th>
-    <th style="text-align:right">Charges réelles</th><th style="text-align:right">Cash-flow</th><th style="text-align:right">Occupation</th>
+
+  document.getElementById('rent-bilan-table').innerHTML=`<thead><tr>
+    <th></th><th style="text-align:right">Encaissé</th><th style="text-align:right">Dû théorique</th>
+    <th style="text-align:right">Charges</th><th style="text-align:right">Cash-flow</th><th style="text-align:right">Occupation</th>
   </tr></thead><tbody>${rows}</tbody>`;
 
-  // Graphique cash-flow mensuel
-  const loyersMonth=getLoyersEncaissesByMonth(locs,year);
-  const chargesMonth=getChargesByMonth(factures,year);
-  const monthsLabels=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
-  chartRentCashflow=destroyChart(chartRentCashflow);
-  chartRentCashflow=new Chart(document.getElementById('chart-rent-cashflow'),{
-    type:'bar',
-    data:{labels:monthsLabels,datasets:[
-      {label:'Loyers encaissés',data:loyersMonth,backgroundColor:'#68d391'},
-      {label:'Charges réelles',data:chargesMonth,backgroundColor:'#fc8181'}
-    ]},
-    options:{responsive:true,maintainAspectRatio:false,
-      scales:{
-        y:{beginAtZero:true,ticks:{color:'#94a3b8'},grid:{color:'rgba(255,255,255,.05)'}},
-        x:{ticks:{color:'#94a3b8'},grid:{display:false}}
-      },
-      plugins:{legend:{labels:{color:'#e2e8f0'}}}
+  // Tableau annuel si "Toutes les années"
+  const annuelDiv=document.getElementById('rent-annuel-section');
+  if(annuelDiv){
+    if(isAll&&years.length>1){
+      let annuelRows='';
+      years.forEach(y=>{
+        let eY=0,dY=0,cY=0;
+        logs.forEach(lg=>{
+          const ld=getLoyersByLogementYear(locs,y);
+          const ch=getReelTotalsByYear(factures,y);
+          eY+=(ld[lg.key]||{encaisse:0}).encaisse;
+          dY+=(ld[lg.key]||{du:0}).du;
+          cY+=ch[lg.label]||0;
+        });
+        const cfY=eY-cY;
+        annuelRows+=`<tr>
+          <td style="font-weight:600">${y}</td>
+          <td style="text-align:right" class="amount">${fmt(eY)}</td>
+          <td style="text-align:right" class="amount prev">${fmt(dY)}</td>
+          <td style="text-align:right" class="amount">${fmt(cY)}</td>
+          <td style="text-align:right" class="ecart ${cfY>=0?'ok':'over'}">${fmtE(cfY)}</td>
+        </tr>`;
+      });
+      annuelDiv.innerHTML=`<div class="section-title" style="margin-top:24px">Détail par année</div>
+        <div class="table-wrap" style="overflow-x:auto;margin-bottom:24px">
+          <table class="factures-table"><thead><tr>
+            <th>Année</th><th style="text-align:right">Encaissé</th><th style="text-align:right">Dû</th><th style="text-align:right">Charges</th><th style="text-align:right">Cash-flow</th>
+          </tr></thead><tbody>${annuelRows}</tbody></table>
+        </div>`;
+    } else {
+      annuelDiv.innerHTML='';
     }
-  });
+  }
 }
+
 
 // ── PROJECTION ────────────────────────────────────────────────────────────
 const PROJ_SCENARIOS={
@@ -4438,34 +4458,33 @@ function nombreEnLettres(n){
 // statut réglé/impayé, date de paiement — la base d'un export comptable pour le bilan.
 function getLoyersExportRows(year){
   const locs=loadLocataires();
+  const cfg=getCTXConfig();
   const months=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
   const todayMk=monthKey(new Date().getFullYear(),new Date().getMonth()+1);
-  const relevantLocs=locs.filter(l=>{
-    if(!l.dateEntree)return false;
-    const startY=+l.dateEntree.slice(0,4);
-    const endY=l.dateSortie?+l.dateSortie.slice(0,4):(new Date().getFullYear()+1);
-    return startY<=year&&endY>=year;
-  }).sort((a,b)=>a.logement.localeCompare(b.logement)||(a.dateEntree||'').localeCompare(b.dateEntree||''));
 
   const rows=[];
-  relevantLocs.forEach(l=>{
-    const loyerHC=+l.loyerHC||0, charges=+l.charges||0, total=loyerHC+charges;
+  cfg.logements.forEach(lg=>{
+    const locsLog=locs.filter(l=>l.logement===lg.key).sort((a,b)=>(a.dateEntree||'').localeCompare(b.dateEntree||''));
     for(let mIdx=1;mIdx<=12;mIdx++){
       const mk=monthKey(year,mIdx);
-      const lastDay=mk+'-'+String(new Date(year,mIdx,0).getDate()).padStart(2,'0');
-      const active=isLocataireActifAt(l,lastDay)||getMonthsOccupied(l).includes(mk);
-      if(!active)continue;
-      const p=(l.paiements||{})[mk];
+      // Trouver le locataire actif ce mois
+      const locActif=locsLog.find(l=>isLocataireActifCeMois(l,mk));
+      if(!locActif)continue;
+      const mInfo=getMontantPeriode(locActif,mk);
+      const p=(locActif.paiements||{})[mk];
       const paye=p&&p.paye;
       const isFuture=mk>todayMk;
       rows.push({
-        logement:l.logement,
-        locataire:l.nom||'—',
+        logement:lg.label,
+        logKey:lg.key,
+        locataire:locActif.nom||'—',
         mois:months[mIdx-1],
         annee:year,
-        loyerHC,
-        charges,
-        total,
+        mk,
+        loyerHC:mInfo.loyerHC,
+        charges:mInfo.charges,
+        total:p?.montant||mInfo.total,
+        totalTheorique:mInfo.total,
         statut:paye?'Réglé':(isFuture?'À échoir':'Impayé'),
         datePaiement:paye&&p.date?fmtDate(p.date):''
       });
@@ -4474,78 +4493,67 @@ function getLoyersExportRows(year){
   return rows;
 }
 
-function exportLoyersCSV(){
-  const yearSel=document.getElementById('loc-year-select');
-  const year=+(yearSel.value||new Date().getFullYear());
+function exportLoyersCSV(yearArg){
+  const year=yearArg||new Date().getFullYear();
   const rows=getLoyersExportRows(year);
   if(!rows.length){alert('Aucun loyer à exporter pour '+year+'.');return;}
   const cols=['Logement','Locataire','Mois','Année','Loyer HC €','Charges €','Total €','Statut','Date de paiement'];
   const csvRows=rows.map(r=>[
-    'Logement '+r.logement,r.locataire,r.mois,r.annee,
+    r.logement,r.locataire,r.mois,r.annee,
     r.loyerHC.toFixed(2),r.charges.toFixed(2),r.total.toFixed(2),
     r.statut,r.datePaiement
   ].map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(';'));
   const csv='\uFEFF'+cols.join(';')+'\n'+csvRows.join('\n');
   const a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-  a.download='SCI_Lemyane_Loyers_'+year+'.csv';
+  a.download=(getCTXConfig().nom.replace(/\s/g,'_'))+'_Loyers_'+year+'.csv';
   a.click();
 }
 
-function exportLoyersPDF(){
-  const yearSel=document.getElementById('loc-year-select');
-  const year=+(yearSel.value||new Date().getFullYear());
+function exportLoyersPDF(yearArg){
+  const year=yearArg||new Date().getFullYear();
   const rows=getLoyersExportRows(year);
   if(!rows.length){alert('Aucun loyer à exporter pour '+year+'.');return;}
+  const cfg=getCTXConfig();
 
-  // Regroupement par logement pour une lecture comptable claire (un sous-total par logement)
   const byLogement={};
   rows.forEach(r=>{
-    if(!byLogement[r.logement])byLogement[r.logement]=[];
-    byLogement[r.logement].push(r);
+    if(!byLogement[r.logKey])byLogement[r.logKey]={label:r.logement,lignes:[]};
+    byLogement[r.logKey].lignes.push(r);
   });
 
   let sectionsHtml='';
-  let totalGeneralRegle=0,totalGeneralAttendu=0;
-  Object.keys(byLogement).sort().forEach(logKey=>{
-    const lignes=byLogement[logKey];
+  let totalRegleG=0,totalAttenduG=0;
+  Object.values(byLogement).forEach(({label,lignes})=>{
     const totalRegle=lignes.filter(r=>r.statut==='Réglé').reduce((s,r)=>s+r.total,0);
     const totalAttendu=lignes.filter(r=>r.statut!=='À échoir').reduce((s,r)=>s+r.total,0);
-    totalGeneralRegle+=totalRegle;totalGeneralAttendu+=totalAttendu;
+    totalRegleG+=totalRegle;totalAttenduG+=totalAttendu;
     const lignesHtml=lignes.map(r=>`<tr>
       <td>${r.locataire}</td><td>${r.mois}</td>
       <td style="text-align:right">${fmt(r.loyerHC)}</td>
       <td style="text-align:right">${fmt(r.charges)}</td>
-      <td style="text-align:right">${fmt(r.total)}</td>
-      <td>${r.statut}</td>
+      <td style="text-align:right;font-weight:${r.statut==='Réglé'?700:400}">${fmt(r.total)}</td>
+      <td style="color:${r.statut==='Réglé'?'#276749':r.statut==='Impayé'?'#c53030':'#718096'}">${r.statut}</td>
       <td>${r.datePaiement||'—'}</td>
     </tr>`).join('');
-    sectionsHtml+=`<h2>Logement ${logKey}</h2>
-      <table>
-        <thead><tr><th>Locataire</th><th>Mois</th><th style="text-align:right">Loyer HC</th><th style="text-align:right">Charges</th><th style="text-align:right">Total</th><th>Statut</th><th>Date paiement</th></tr></thead>
+    sectionsHtml+=`<h2 style="color:#2d3748;font-size:14px;margin:20px 0 8px;padding-bottom:4px;border-bottom:2px solid #e2e8f0">${label}</h2>
+      <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:6px">
+        <thead><tr style="background:#f7fafc"><th style="text-align:left;padding:5px 8px">Locataire</th><th style="text-align:left;padding:5px 8px">Mois</th><th style="text-align:right;padding:5px 8px">Loyer HC</th><th style="text-align:right;padding:5px 8px">Charges</th><th style="text-align:right;padding:5px 8px">Total</th><th style="padding:5px 8px">Statut</th><th style="padding:5px 8px">Paiement</th></tr></thead>
         <tbody>${lignesHtml}</tbody>
       </table>
-      <p style="font-size:11px;color:#4a5568;margin:-8px 0 20px">Sous-total réglé : <b>${fmt(totalRegle)}</b> sur ${fmt(totalAttendu)} attendu (hors mois à échoir).</p>`;
+      <p style="font-size:10px;color:#4a5568;margin:0 0 16px">Réglé : <b>${fmt(totalRegle)}</b> / Attendu : ${fmt(totalAttendu)}</p>`;
   });
 
-  const title='SCI LEMYANE — Loyers '+year;
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title>
-  <style>body{font-family:Arial,sans-serif;font-size:12px;color:#1a202c;padding:32px}
-  h1{font-size:18px;color:#2b6cb0;margin-bottom:4px}
-  p.sub{color:#718096;font-size:11px;margin-bottom:24px}
-  h2{font-size:13px;color:#2b6cb0;margin:20px 0 10px;border-bottom:2px solid #bee3f8;padding-bottom:4px}
-  table{width:100%;border-collapse:collapse;margin-bottom:8px}
-  th{text-align:left;padding:7px 8px;background:#ebf8ff;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#2c5282}
-  td{padding:6px 8px;font-size:11px;border-bottom:1px solid #e2e8f0}
-  .total-general{margin-top:24px;padding-top:14px;border-top:2px solid #2b6cb0;font-size:13px;font-weight:700;color:#2b6cb0}
-  @media print{body{padding:16px}}</style></head><body>
-  <h1>${title}</h1>
-  <p class="sub">65 Chemin des Guignardières · Soullans (85300) · Édité le ${fmtDate(todayStr())}</p>
-  ${sectionsHtml}
-  <div class="total-general">Total général réglé sur l'année : ${fmt(totalGeneralRegle)} sur ${fmt(totalGeneralAttendu)} attendu (hors mois à échoir)</div>
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;padding:20px;color:#2d3748}table td,table th{border-bottom:1px solid #e2e8f0;padding:5px 8px}</style></head><body>
+    <h1 style="font-size:18px;color:#1a202c">${cfg.nom} — Suivi des loyers ${year}</h1>
+    <p style="font-size:11px;color:#718096;margin-bottom:20px">Édité le ${new Date().toLocaleDateString('fr-FR')}</p>
+    ${sectionsHtml}
+    <div style="margin-top:20px;padding:12px;background:#f7fafc;border-radius:8px;font-size:12px">
+      <strong>TOTAL GÉNÉRAL ${year}</strong> — Réglé : <strong>${fmt(totalRegleG)}</strong> / Attendu : ${fmt(totalAttenduG)}
+    </div>
   </body></html>`;
-
-  openPrintOverlay(html,title);
+  const w=window.open('','_blank');
+  if(w){w.document.write(html);w.document.close();w.print();}
 }
 
 // Construit le HTML de la quittance pour le locataire/mois donnés.
