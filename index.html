@@ -911,6 +911,18 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
       <div class="form-group"><label>Charges (€/mois)</label><input type="number" id="loc-charges" step="0.01"></div>
       <div class="form-group"><label>Dépôt de garantie (€)</label><input type="number" id="loc-depot" step="0.01"></div>
     </div>
+
+    <!-- Périodes de loyer (renouvellements de bail) -->
+    <div style="margin-top:16px;border-top:1px solid var(--border2);padding-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--text)">📅 Historique des montants de loyer</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">Pour renouvellements de bail ou révisions annuelles. Le bon montant sera utilisé automatiquement selon la période.</div>
+        </div>
+        <button type="button" class="btn btn-sm" onclick="ajouterPeriodeLoyer()" style="flex-shrink:0">+ Période</button>
+      </div>
+      <div id="loc-periodes-list" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-danger btn-sm" id="loc-delete-btn" onclick="deleteLocataire()" style="display:none;margin-right:auto">Supprimer</button>
       <button class="btn btn-sm" style="background:var(--bg3);border-color:var(--border)" onclick="closeLocModal()">Annuler</button>
@@ -2853,12 +2865,12 @@ function renderLocataires(){
   let encaisses=0,attendus=0,impayesTotal=0;
   logs.forEach(lg=>{
     locs.filter(l=>l.logement===lg.key).forEach(l=>{
-      const montant=(+l.loyerHC||0)+(+l.charges||0);
       const firstDay=mk+'-01',lastDay=mk+'-'+String(new Date(y,m,0).getDate()).padStart(2,'0');
       if(isLocataireActifAt(l,lastDay)||isLocataireActifAt(l,firstDay)){
-        attendus+=montant;
+        const mInfo=getMontantPeriode(l,mk);
+        attendus+=mInfo.total;
         const p=(l.paiements||{})[mk];
-        if(p&&p.paye)encaisses+=montant;
+        if(p&&p.paye)encaisses+=(p.montant||mInfo.total);
       }
       getMonthsOccupied(l).forEach(occMk=>{
         if(occMk<=mk){const pp=(l.paiements||{})[occMk];if(!pp||!pp.paye)impayesTotal++;}
@@ -2952,7 +2964,7 @@ function renderLocataires(){
               </div>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-              <span style="font-size:20px;font-weight:700;color:${lg.color}">${actif?fmt(montant):fmt(0)}</span>
+              <span style="font-size:20px;font-weight:700;color:${lg.color}">${actif?fmt(getMontantPeriode(cur,mk).total):fmt(0)}</span>
               <span style="font-size:10px;padding:3px 10px;border-radius:12px;font-weight:600;${actif?paye?'background:rgba(104,211,145,.15);color:#68d391':'background:rgba(252,129,129,.15);color:#fc8181':'background:rgba(255,255,255,.06);color:var(--text3)'}">${actif?paye?'✓ Payé ce mois':'⚠ En attente':'Vacant'}</span>
             </div>
             ${actif&&impLog>0?`<div style="font-size:10px;color:#fc8181">⚠ ${impLog} mois impayé${impLog>1?'s':''}</div>`:''}
@@ -3079,7 +3091,7 @@ function renderLocataires(){
           ${p.paye?`<span class="loc-alert-badge loc-alert-green" style="margin-left:8px">✓ ${p.date?fmtDate(p.date):''}</span>`:`<span class="loc-alert-badge loc-alert-red" style="margin-left:8px">✗ Impayé</span>`}
         </div>
         <div style="display:flex;gap:6px;align-items:center">
-          <span style="font-size:13px;font-weight:700;color:${p.paye?'#68d391':'#fc8181'}">${fmt(montant)}</span>
+          <span style="font-size:13px;font-weight:700;color:${p.paye?'#68d391':'#fc8181'}">${fmt(p.montant||getMontantPeriode(cur,pmk).total)}</span>
           <button class="btn btn-sm" onclick="modifierDatePaiement('${cur.id}','${pmk}')" style="font-size:10px;padding:2px 8px">✏</button>
         </div>
       </div>
@@ -3107,10 +3119,10 @@ function renderLocataires(){
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
-      <div class="loc-metric"><div class="loc-metric-val" style="color:${lg.color}">${fmt(montant)}</div><div class="loc-metric-label">Loyer total / mois</div></div>
+      <div class="loc-metric"><div class="loc-metric-val" style="color:${lg.color}">${fmt(getMontantPeriode(cur,mk).total)}</div><div class="loc-metric-label">Loyer total / mois</div></div>
       <div class="loc-metric"><div class="loc-metric-val" style="color:${payeCeMois?'#68d391':'#fc8181'}">${payeCeMois?'✓ Payé':'⏳ En attente'}</div><div class="loc-metric-label">Statut ce mois</div></div>
       <div class="loc-metric"><div class="loc-metric-val">${fmt(cur.depot||0)}</div><div class="loc-metric-label">Dépôt de garantie</div></div>
-      <div class="loc-metric"><div class="loc-metric-val" style="color:#b794f4">${fmt((+cur.loyerHC||0)*12)}</div><div class="loc-metric-label">Loyer annuel HC</div></div>
+      <div class="loc-metric"><div class="loc-metric-val" style="color:#b794f4">${fmt(getMontantPeriode(cur,mk).loyerHC*12)}</div><div class="loc-metric-label">Loyer annuel HC</div></div>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">
@@ -3142,45 +3154,107 @@ function renderLocataires(){
 
 // Marquer un mois comme payé avec saisie de date
 function marquerPayeAvecDate(locId,mk){
+  ouvrirModalPaiement(locId,mk);
+}
+function marquerPaye(locId,mk){ouvrirModalPaiement(locId,mk);}
+
+function ouvrirModalPaiement(locId,mk){
+  const locs=loadLocataires();
+  const loc=locs.find(l=>l.id===locId);
+  if(!loc)return;
+  const existing=(loc.paiements||{})[mk]||{};
+  const montantDefaut=existing.montant||getMontantPeriode(loc,mk).total;
+  const dateDefaut=existing.date||mk+'-01';
+  const parts=mk.split('-');
+  const moisLabel=new Date(+parts[0],+parts[1]-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+
+  // Créer la modale si elle n'existe pas
+  let modal=document.getElementById('modal-paiement-loyer');
+  if(!modal){
+    modal=document.createElement('div');
+    modal.id='modal-paiement-loyer';
+    modal.style.cssText='display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2000;align-items:center;justify-content:center';
+    modal.innerHTML=`
+      <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:18px;padding:28px;width:380px;max-width:92vw;box-shadow:0 24px 60px rgba(0,0,0,.5)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+          <h2 style="margin:0;font-size:16px" id="mpl-title">Encaisser le loyer</h2>
+          <button onclick="fermerModalPaiement()" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;padding:0 4px">×</button>
+        </div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:20px" id="mpl-subtitle"></div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Montant encaissé (€)</label>
+            <input type="number" id="mpl-montant" step="0.01" style="font-size:16px;font-weight:700">
+            <div style="font-size:10px;color:var(--text3);margin-top:4px">Modifiable si le loyer était différent à cette période</div>
+          </div>
+          <div class="form-group">
+            <label>Date de paiement</label>
+            <input type="date" id="mpl-date">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
+          <button class="btn btn-sm" onclick="fermerModalPaiement()" style="background:var(--bg3);border-color:var(--border)">Annuler</button>
+          <button class="btn btn-sm" onclick="validerPaiementModal()" style="background:#68d391;color:#0a0e1a;border-color:#68d391;font-weight:700">✓ Valider</button>
+          <button class="btn btn-sm" onclick="supprimerPaiementModal()" style="background:rgba(252,129,129,.1);border-color:rgba(252,129,129,.3);color:#fc8181">✗ Marquer impayé</button>
+        </div>
+      </div>`;
+    modal.addEventListener('click',e=>{if(e.target===modal)fermerModalPaiement();});
+    document.body.appendChild(modal);
+  }
+
+  // Remplir les champs
+  document.getElementById('mpl-title').textContent=existing.paye?'Modifier le paiement':'Encaisser le loyer';
+  document.getElementById('mpl-subtitle').textContent=`${loc.nom||'Locataire'} — ${moisLabel}`;
+  document.getElementById('mpl-montant').value=montantDefaut;
+  document.getElementById('mpl-date').value=dateDefaut;
+
+  // Stocker le contexte
+  modal._locId=locId;
+  modal._mk=mk;
+  modal.style.display='flex';
+  setTimeout(()=>document.getElementById('mpl-montant').focus(),50);
+}
+
+function fermerModalPaiement(){
+  const modal=document.getElementById('modal-paiement-loyer');
+  if(modal)modal.style.display='none';
+}
+
+function validerPaiementModal(){
+  const modal=document.getElementById('modal-paiement-loyer');
+  if(!modal)return;
+  const locId=modal._locId;
+  const mk=modal._mk;
+  const date=document.getElementById('mpl-date').value;
+  const montant=+document.getElementById('mpl-montant').value||0;
+  if(!date){document.getElementById('mpl-date').style.borderColor='var(--red)';return;}
   const locs=loadLocataires();
   const loc=locs.find(l=>l.id===locId);
   if(!loc)return;
   if(!loc.paiements)loc.paiements={};
-  // Proposer la date du 1er du mois par défaut
-  const defaultDate=mk+'-01';
-  const parts=mk.split('-');
-  const defaultFmt=`01/${parts[1]}/${parts[0]}`;
-  const dateInput=window.prompt?window.prompt(`Date de paiement pour ${mk} (JJ/MM/AAAA) :`,defaultFmt):defaultFmt;
-  if(dateInput===null)return;
-  let isoDate=defaultDate;
-  if(dateInput){
-    const dp=dateInput.trim().split('/');
-    if(dp.length===3)isoDate=`${dp[2]}-${dp[1].padStart(2,'0')}-${dp[0].padStart(2,'0')}`;
-  }
-  loc.paiements[mk]={paye:true,date:isoDate};
+  loc.paiements[mk]={paye:true,date,montant};
   saveLocataires(locs);
+  fermerModalPaiement();
   renderLocataires();
 }
 
-// Garder l'ancienne pour compatibilité
-function marquerPaye(locId,mk){marquerPayeAvecDate(locId,mk);}
-
-
-// Modal rapide pour encaisser le loyer du mois
-function ouvrirModalAjoutPaiement(locId,mk){
+function supprimerPaiementModal(){
+  const modal=document.getElementById('modal-paiement-loyer');
+  if(!modal)return;
+  const locId=modal._locId;
+  const mk=modal._mk;
   const locs=loadLocataires();
   const loc=locs.find(l=>l.id===locId);
   if(!loc)return;
-  const existingDate=((loc.paiements||{})[mk]||{}).date||todayStr();
-  const dateInput=prompt(`Date de paiement pour ${mk} (JJ/MM/AAAA) :`,fmtDate(existingDate));
-  if(!dateInput)return;
-  const parts=dateInput.split('/');
-  if(parts.length!==3)return;
-  const isoDate=`${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
-  if(!loc.paiements)loc.paiements={};
-  loc.paiements[mk]={paye:true,date:isoDate};
+  if(loc.paiements&&loc.paiements[mk])delete loc.paiements[mk];
   saveLocataires(locs);
+  fermerModalPaiement();
   renderLocataires();
+}
+
+// Modal rapide pour encaisser le loyer du mois (bouton "Encaisser loyer")
+function ouvrirModalAjoutPaiement(locId,mk){
+  ouvrirModalPaiement(locId,mk);
 }
 
 
@@ -3384,9 +3458,12 @@ function getLoyersByLogementYear(locs,year){
     const montant=(+l.loyerHC||0)+(+l.charges||0);
     getMonthsOccupied(l).forEach(mk=>{
       if(mk.slice(0,4)===String(year)){
-        res[l.logement].du+=montant;
+        const mInfo=getMontantPeriode(l,mk);
+        const montantMk=mInfo.total;
+        res[l.logement].du+=montantMk;
         const p=(l.paiements||{})[mk];
-        if(p&&p.paye)res[l.logement].encaisse+=montant;
+        // Utiliser le montant réellement encaissé si disponible, sinon le montant théorique
+        if(p&&p.paye)res[l.logement].encaisse+=(p.montant||montantMk);
       }
     });
   });
@@ -4079,13 +4156,58 @@ function openLocModal(id,logKeyDefault){
     document.getElementById('loc-depot').value='';
     delBtn.style.display='none';
   }
+  // Remplir les périodes de loyer
+  renderPeriodesLoyer(id?loadLocataires().find(x=>String(x.id)===String(id)):null);
   document.getElementById('loc-modal-overlay').classList.add('open');
 }
+
+function renderPeriodesLoyer(loc){
+  const container=document.getElementById('loc-periodes-list');
+  if(!container)return;
+  const periodes=(loc&&loc.periodes&&loc.periodes.length>0)
+    ?[...loc.periodes].sort((a,b)=>a.debut.localeCompare(b.debut))
+    :loc?[{debut:loc.dateEntree||'',loyerHC:loc.loyerHC||0,charges:loc.charges||0}]:[];
+  container.innerHTML=periodes.map((p,i)=>periodeRowHtml(p,i)).join('');
+}
+
+function periodeRowHtml(p,i){
+  return`<div class="periode-row" style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:10px 12px">
+    <div class="form-group" style="margin:0"><label style="font-size:10px">Date de début</label><input class="p-debut" type="date" value="${p.debut||''}"></div>
+    <div class="form-group" style="margin:0"><label style="font-size:10px">Loyer HC (€)</label><input class="p-loyer" type="number" step="0.01" value="${p.loyerHC||''}" placeholder="0"></div>
+    <div class="form-group" style="margin:0"><label style="font-size:10px">Charges (€)</label><input class="p-charges" type="number" step="0.01" value="${p.charges||''}" placeholder="0"></div>
+    <button type="button" onclick="this.closest('.periode-row').remove()" style="background:rgba(252,129,129,.1);border:1px solid rgba(252,129,129,.3);color:#fc8181;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:14px;height:36px">×</button>
+  </div>`;
+}
+
+function ajouterPeriodeLoyer(){
+  const container=document.getElementById('loc-periodes-list');
+  if(!container)return;
+  const div=document.createElement('div');
+  div.innerHTML=periodeRowHtml({debut:todayStr(),loyerHC:'',charges:''},container.children.length);
+  container.appendChild(div.firstElementChild);
+  // Focus sur la date
+  container.lastElementChild.querySelector('.p-debut')?.focus();
+}
+
 function closeLocModal(){
   document.getElementById('loc-modal-overlay').classList.remove('open');
   editLocId=null;
 }
 document.getElementById('loc-modal-overlay').addEventListener('click',function(e){if(e.target===this)closeLocModal();});
+
+// Retourne le montant (loyerHC + charges) applicable pour un mois donné (mk = "YYYY-MM")
+// Cherche dans loc.periodes (trié par date desc), sinon fallback sur loc.loyerHC + loc.charges
+function getMontantPeriode(loc, mk){
+  if(loc.periodes&&loc.periodes.length>0){
+    const moisDate=mk+'-01';
+    // Trier par date décroissante et prendre la première période dont debut <= mois
+    const sorted=[...loc.periodes].sort((a,b)=>b.debut.localeCompare(a.debut));
+    const periode=sorted.find(p=>p.debut<=moisDate);
+    if(periode)return{loyerHC:+periode.loyerHC||0,charges:+periode.charges||0,total:(+periode.loyerHC||0)+(+periode.charges||0)};
+  }
+  // Fallback sur les champs directs (rétrocompatibilité)
+  return{loyerHC:+loc.loyerHC||0,charges:+loc.charges||0,total:(+loc.loyerHC||0)+(+loc.charges||0)};
+}
 
 function saveLocataireForm(){
   const locs=loadLocataires();
@@ -4101,6 +4223,29 @@ function saveLocataireForm(){
     depot:+document.getElementById('loc-depot').value||0,
   };
   if(!data.nom||!data.dateEntree){alert("Le nom et la date d\'entrée sont obligatoires.");return;}
+
+  // Récupérer les périodes saisies dans la modale
+  const periodesContainer=document.getElementById('loc-periodes-list');
+  if(periodesContainer){
+    const rows=periodesContainer.querySelectorAll('.periode-row');
+    const periodes=[];
+    rows.forEach(row=>{
+      const debut=row.querySelector('.p-debut')?.value;
+      const loyer=+row.querySelector('.p-loyer')?.value||0;
+      const charges=+row.querySelector('.p-charges')?.value||0;
+      if(debut)periodes.push({debut,loyerHC:loyer,charges});
+    });
+    if(periodes.length>0){
+      // Trier par date croissante
+      periodes.sort((a,b)=>a.debut.localeCompare(b.debut));
+      data.periodes=periodes;
+      // Mettre à jour loyerHC/charges avec la période la plus récente
+      const last=periodes[periodes.length-1];
+      data.loyerHC=last.loyerHC;
+      data.charges=last.charges;
+    }
+  }
+
   if(editLocId){
     const l=locs.find(x=>String(x.id)===String(editLocId));
     Object.assign(l,data);
