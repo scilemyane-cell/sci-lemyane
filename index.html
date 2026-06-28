@@ -2752,7 +2752,22 @@ function monthKey(y,m){return y+'-'+String(m).padStart(2,'0');}
 function isLocataireActifAt(loc,dateStr){
   if(!loc.dateEntree)return false;
   if(loc.dateEntree>dateStr)return false;
+  // dateSortie est inclusive (le locataire est encore là ce jour-là)
+  // On exclut si dateSortie est strictement AVANT dateStr
   if(loc.dateSortie && loc.dateSortie<dateStr)return false;
+  return true;
+}
+
+// Vérifie si un locataire doit payer le loyer d'un mois donné (YYYY-MM)
+// Un locataire paye un mois s'il était présent au moins 1 jour dans ce mois
+// ET que sa date de sortie n'est pas avant le 1er du mois
+function isLocataireActifCeMois(loc, mk){
+  if(!loc.dateEntree)return false;
+  const firstOfMonth=mk+'-01';
+  const lastOfMonth=mk+'-'+String(new Date(+mk.slice(0,4),+mk.slice(5,7),0).getDate()).padStart(2,'0');
+  // Entré avant la fin du mois ET sorti après le début du mois (ou pas encore sorti)
+  if(loc.dateEntree>lastOfMonth)return false;
+  if(loc.dateSortie && loc.dateSortie<firstOfMonth)return false;
   return true;
 }
 function getCurrentLocataire(logKey){
@@ -2831,7 +2846,6 @@ function occupiedDays(logKey,startStr,endStr){
 // Liste des mois 'YYYY-MM' où le locataire est censé occuper le logement
 function getMonthsOccupied(loc){
   if(!loc.dateEntree)return[];
-  const start=new Date(loc.dateEntree+'-01'.length===10?loc.dateEntree:loc.dateEntree);
   const startD=new Date(loc.dateEntree+'T00:00:00');
   const endStr=loc.dateSortie||todayStr();
   const endD=new Date(endStr+'T00:00:00');
@@ -2839,7 +2853,8 @@ function getMonthsOccupied(loc){
   let d=new Date(startD.getFullYear(),startD.getMonth(),1);
   const endM=new Date(endD.getFullYear(),endD.getMonth(),1);
   while(d<=endM){
-    months.push(monthKey(d.getFullYear(),d.getMonth()+1));
+    const mk=monthKey(d.getFullYear(),d.getMonth()+1);
+    if(isLocataireActifCeMois(loc,mk))months.push(mk);
     d.setMonth(d.getMonth()+1);
   }
   return months;
@@ -3019,7 +3034,7 @@ function renderLocataires(){
     const MOIS=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
     // Trouver quel locataire était actif pour chaque mois
     const getPaieInfo=(dMk)=>{
-      const locForMonth=allLocsForLog.find(l=>isLocataireActifAt(l,dMk+'-15'));
+      const locForMonth=allLocsForLog.find(l=>isLocataireActifCeMois(l,dMk));
       if(!locForMonth)return{vacant:true};
       const pp=(locForMonth.paiements||{})[dMk];
       const isFutur=dMk>mk;
@@ -3164,7 +3179,8 @@ function ouvrirModalPaiement(locId,mk){
   const loc=locs.find(l=>String(l.id)===String(locId));
   if(!loc){console.error('Locataire non trouvé:',locId);return;}
   const existing=(loc.paiements||{})[mk]||{};
-  const montantDefaut=existing.montant||getMontantPeriode(loc,mk).total;
+  // Priorité : 1) montant déjà saisi pour ce mois, 2) dernier montant validé, 3) montant de la période
+  const montantDefaut=existing.montant||loc.lastMontantLoyer||getMontantPeriode(loc,mk).total;
   const dateDefaut=existing.date||mk+'-01';
   const parts=mk.split('-');
   const moisLabel=new Date(+parts[0],+parts[1]-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
@@ -3234,6 +3250,8 @@ function validerPaiementModal(){
   if(!loc)return;
   if(!loc.paiements)loc.paiements={};
   loc.paiements[mk]={paye:true,date,montant};
+  // Mémoriser le dernier montant validé pour pré-remplir les mois suivants
+  loc.lastMontantLoyer=montant;
   saveLocataires(locs);
   fermerModalPaiement();
   renderLocataires();
