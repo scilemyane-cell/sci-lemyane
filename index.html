@@ -3048,7 +3048,7 @@ function renderLocataires(){
     <div style="display:grid;grid-template-columns:repeat(12,1fr);gap:4px">
       ${months.map(({mi,dMk})=>{
         const info=getPaieInfo(dMk);
-        if(info.vacant)return`<div class="loc-cal-cell loc-cal-vacant" title="${MOIS[mi-1]} ${calYear} — Vacant — Cliquer pour saisir un paiement" style="cursor:pointer" onclick="ouvrirModalPaiementVacant('${lg.key}','${dMk}')">○</div>`;
+        if(info.vacant)return`<div class="loc-cal-cell loc-cal-vacant" title="${MOIS[mi-1]} ${calYear} — Vacant — Cliquer pour saisir" style="cursor:pointer" onclick="ouvrirModalPaiement('vacant','${dMk}','${lg.key}')">○</div>`;
         if(info.isFutur)return`<div class="loc-cal-cell loc-cal-futur" title="${MOIS[mi-1]} ${calYear}">${MOIS[mi-1]}</div>`;
         if(info.pp&&info.pp.paye)return`<div class="loc-cal-cell loc-cal-paye" title="${MOIS[mi-1]} — Payé${info.pp.date?' le '+fmtDate(info.pp.date):''} — Cliquer pour modifier" style="cursor:pointer" onclick="ouvrirModalPaiement('${info.locForMonth.id}','${dMk}','${lg.key}')">${MOIS[mi-1]}</div>`;
         return`<div class="loc-cal-cell loc-cal-impaye" title="${MOIS[mi-1]} — Non payé — cliquer pour encaisser" onclick="ouvrirModalPaiement('${info.locForMonth.id}','${dMk}','${lg.key}')">${MOIS[mi-1]}</div>`;
@@ -3175,50 +3175,53 @@ function marquerPaye(locId,mk){ouvrirModalPaiement(locId,mk);}
 
 function ouvrirModalPaiement(locId, mk, logKeyOverride){
   const locs=loadLocataires();
-  const cfg=getCTXConfig();
   const parts=mk.split('-');
   const moisLabel=new Date(+parts[0],+parts[1]-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
 
-  // Trouver le logement et tous ses locataires
-  let loc=locs.find(l=>String(l.id)===String(locId));
+  // Identifier le logement
+  const isVacantCall=(String(locId)==='vacant');
+  let loc=isVacantCall?null:locs.find(l=>String(l.id)===String(locId));
   const logKey=logKeyOverride||(loc?loc.logement:null);
-  const locsLogement=logKey?locs.filter(l=>l.logement===logKey):loc?[loc]:[];
 
-  // Paiement existant pour ce mois
-  const existing=loc?(loc.paiements||{})[mk]||{}:{};
+  // TOUS les locataires du logement, triés par date d'entrée décroissante
+  const tousLocs=logKey
+    ?locs.filter(l=>l.logement===logKey).sort((a,b)=>(b.dateEntree||'').localeCompare(a.dateEntree||''))
+    :loc?[loc]:[];
+
+  // Paiement existant pour ce mois sur n'importe quel locataire du logement
+  let locAvecPaiement=tousLocs.find(l=>(l.paiements||{})[mk]?.paye);
+  const existing=locAvecPaiement?(locAvecPaiement.paiements||{})[mk]||{}:{};
   const isPaye=existing.paye||false;
+  const isVacant=existing.vacant||false;
 
-  // Pré-remplissage intelligent :
-  // Si paiement déjà saisi → utiliser ses valeurs
-  // Sinon → utiliser lastPaiement (dernier paiement mémorisé sur ce locataire)
-  // Sinon → montant de la période + date du 1er du mois
-  let montantDefaut, dateDefaut, locIdDefaut=String(locId);
+  // Locataire à pré-sélectionner
+  let locIdDefaut;
+  if(isVacantCall) locIdDefaut='vacant';
+  else if(locAvecPaiement) locIdDefaut=String(locAvecPaiement.id);
+  else if(loc?.lastPaiement?.locId) locIdDefaut=loc.lastPaiement.locId;
+  else if(loc) locIdDefaut=String(loc.id);
+  else if(tousLocs.length) locIdDefaut=String(tousLocs[0].id);
+  else locIdDefaut='vacant';
 
+  // Montant et date
+  const locSel=locs.find(l=>String(l.id)===locIdDefaut);
+  let montantDefaut, dateDefaut;
   if(isPaye){
     montantDefaut=existing.montant;
     dateDefaut=existing.date;
-  } else if(loc&&loc.lastPaiement){
-    montantDefaut=loc.lastPaiement.montant;
-    dateDefaut=loc.lastPaiement.dateTemplate||mk+'-01';
-    // Si le locataire mémorisé existe toujours, le pré-sélectionner
-    if(loc.lastPaiement.locId&&locsLogement.find(l=>String(l.id)===loc.lastPaiement.locId)){
-      locIdDefaut=loc.lastPaiement.locId;
-    }
+  } else if(locSel?.lastPaiement){
+    montantDefaut=locSel.lastPaiement.montant;
+    dateDefaut=locSel.lastPaiement.dateTemplate||mk+'-01';
   } else {
-    montantDefaut=loc?(loc.lastMontantLoyer||getMontantPeriode(loc,mk).total):0;
+    montantDefaut=locSel?(locSel.lastMontantLoyer||getMontantPeriode(locSel,mk).total):0;
     dateDefaut=mk+'-01';
   }
 
-  // S'assurer que locIdDefaut pointe sur un locataire existant
-  if(!locsLogement.find(l=>String(l.id)===locIdDefaut)&&locsLogement.length>0){
-    locIdDefaut=String(locsLogement[0].id);
-  }
-  const locSelectionne=locs.find(l=>String(l.id)===locIdDefaut)||loc;
+  // Options du sélecteur : tous les locataires + "Vacant"
+  const optionsLoc=tousLocs.map(l=>`<option value="${l.id}" ${String(l.id)===locIdDefaut?'selected':''}>${l.nom||'—'} (${fmtDate(l.dateEntree)}${l.dateSortie?' → '+fmtDate(l.dateSortie):''})</option>`).join('')
+    +`<option value="vacant" ${locIdDefaut==='vacant'||isVacant?'selected':''}>— Vacant (personne n'a payé) —</option>`;
 
-  // Options locataires pour ce logement
-  const optionsLoc=locsLogement.map(l=>`<option value="${l.id}" ${String(l.id)===locIdDefaut?'selected':''}>${l.nom||'—'} (${fmtDate(l.dateEntree)}${l.dateSortie?' → '+fmtDate(l.dateSortie):''})</option>`).join('');
-
-  // Construire/reconstruire la modale à chaque ouverture
+  // Reconstruire la modale
   let modal=document.getElementById('modal-paiement-loyer');
   if(modal)modal.remove();
   modal=document.createElement('div');
@@ -3232,121 +3235,84 @@ function ouvrirModalPaiement(locId, mk, logKeyOverride){
       </div>
       <div style="font-size:12px;color:var(--accent);font-weight:600;margin-bottom:20px">${moisLabel}</div>
 
-      ${locsLogement.length>1?`
       <div class="form-group" style="margin-bottom:16px">
         <label>Locataire</label>
         <select id="mpl-locataire" onchange="mplChangerLocataire(this.value,'${mk}')">
           ${optionsLoc}
         </select>
-      </div>`:`<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px">👤 ${locSelectionne?locSelectionne.nom:'—'}</div>`}
+      </div>
 
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Montant encaissé (€)</label>
-          <input type="number" id="mpl-montant" step="0.01" value="${montantDefaut||''}" style="font-size:16px;font-weight:700">
-          <div style="font-size:10px;color:var(--text3);margin-top:4px">Référence période : ${fmt(locSelectionne?getMontantPeriode(locSelectionne,mk).total:0)}</div>
+      <div id="mpl-champs-paiement" style="${locIdDefaut==='vacant'||isVacant?'display:none':''}">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Montant encaissé (€)</label>
+            <input type="number" id="mpl-montant" step="0.01" value="${montantDefaut||''}" style="font-size:16px;font-weight:700">
+            <div style="font-size:10px;color:var(--text3);margin-top:4px">Référence période : ${fmt(locSel?getMontantPeriode(locSel,mk).total:0)}</div>
+          </div>
+          <div class="form-group">
+            <label>Date de paiement</label>
+            <input type="date" id="mpl-date" value="${dateDefaut||mk+'-01'}">
+          </div>
+          <div class="form-group">
+            <label>Note (optionnel)</label>
+            <input type="text" id="mpl-note" placeholder="ex: virement, chèque..." value="${existing.note||''}">
+          </div>
         </div>
-        <div class="form-group">
-          <label>Date de paiement</label>
-          <input type="date" id="mpl-date" value="${dateDefaut||mk+'-01'}">
-        </div>
-        <div class="form-group">
-          <label>Note (optionnel)</label>
-          <input type="text" id="mpl-note" placeholder="ex: virement, chèque..." value="${existing.note||''}">
-        </div>
+      </div>
+
+      <div id="mpl-vacant-info" style="${locIdDefaut==='vacant'||isVacant?'':'display:none'};background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:8px;font-size:12px;color:var(--text3)">
+        🏠 Ce mois sera marqué comme <strong style="color:var(--text)">vacant</strong> — aucun loyer attendu.
       </div>
 
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap">
         <button class="btn btn-sm" onclick="fermerModalPaiement()" style="background:var(--bg3);border-color:var(--border)">Annuler</button>
-        ${isPaye?`<button class="btn btn-sm" onclick="supprimerPaiementModal()" style="background:rgba(252,129,129,.1);border-color:rgba(252,129,129,.3);color:#fc8181">✗ Marquer impayé</button>`:''}
-        <button class="btn btn-sm" onclick="validerPaiementModal()" style="background:#68d391;color:#0a0e1a;border-color:#68d391;font-weight:700">✓ ${isPaye?'Mettre à jour':'Valider'}</button>
+        ${isPaye||isVacant?`<button class="btn btn-sm" onclick="supprimerPaiementModal()" style="background:rgba(252,129,129,.1);border-color:rgba(252,129,129,.3);color:#fc8181">✗ Effacer</button>`:''}
+        <button class="btn btn-sm" onclick="validerPaiementModal()" style="background:#68d391;color:#0a0e1a;border-color:#68d391;font-weight:700">✓ ${isPaye||isVacant?'Mettre à jour':'Valider'}</button>
       </div>
     </div>`;
   modal.addEventListener('click',e=>{if(e.target===modal)fermerModalPaiement();});
   modal._locId=locIdDefaut;
   modal._mk=mk;
+  modal._logKey=logKey;
   document.body.appendChild(modal);
-  setTimeout(()=>document.getElementById('mpl-montant')?.focus(),50);
+  setTimeout(()=>{
+    const el=document.getElementById('mpl-montant');
+    if(el&&el.closest('#mpl-champs-paiement')?.style.display!=='none')el.focus();
+  },50);
 }
-
 // Ouvrir la modale pour un mois vacant (pas de locataire actif ce mois)
 // Permet de choisir n'importe quel locataire du logement pour y rattacher un paiement
-function ouvrirModalPaiementVacant(logKey, mk){
-  const locs=loadLocataires();
-  const locsLogement=locs.filter(l=>l.logement===logKey);
-  if(!locsLogement.length){
-    alert('Aucun locataire enregistré pour ce logement. Ajoutez d\'abord un locataire.');
-    return;
-  }
-  const parts=mk.split('-');
-  const moisLabel=new Date(+parts[0],+parts[1]-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
 
-  // Prendre le premier locataire comme sélection par défaut
-  const locDefaut=locsLogement[locsLogement.length-1]; // le plus récent
-  const existing=(locDefaut.paiements||{})[mk]||{};
-  const montantDefaut=existing.montant||locDefaut.lastMontantLoyer||getMontantPeriode(locDefaut,mk).total;
-
-  const optionsLoc=locsLogement.map(l=>`<option value="${l.id}">${l.nom||'—'} (${fmtDate(l.dateEntree)}${l.dateSortie?' → '+fmtDate(l.dateSortie):''})</option>`).join('');
-
-  let modal=document.getElementById('modal-paiement-loyer');
-  if(modal)modal.remove();
-  modal=document.createElement('div');
-  modal.id='modal-paiement-loyer';
-  modal.style.cssText='display:flex;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2000;align-items:center;justify-content:center';
-  modal.innerHTML=`
-    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:18px;padding:28px;width:440px;max-width:94vw;box-shadow:0 24px 60px rgba(0,0,0,.5)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <h2 style="margin:0;font-size:16px">Saisir un paiement</h2>
-        <button onclick="fermerModalPaiement()" style="background:none;border:none;color:var(--text3);font-size:22px;cursor:pointer;line-height:1">×</button>
-      </div>
-      <div style="font-size:12px;color:var(--accent);font-weight:600;margin-bottom:20px">${moisLabel} — <span style="color:var(--text3)">Période sans locataire actif détecté</span></div>
-      <div class="form-group" style="margin-bottom:16px">
-        <label>Rattacher à quel locataire ?</label>
-        <select id="mpl-locataire" onchange="mplChangerLocataire(this.value,'${mk}')">
-          ${optionsLoc}
-        </select>
-      </div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Montant encaissé (€)</label>
-          <input type="number" id="mpl-montant" step="0.01" value="${montantDefaut}" style="font-size:16px;font-weight:700">
-        </div>
-        <div class="form-group">
-          <label>Date de paiement</label>
-          <input type="date" id="mpl-date" value="${mk+'-01'}">
-        </div>
-        <div class="form-group">
-          <label>Note (optionnel)</label>
-          <input type="text" id="mpl-note" placeholder="ex: virement, chèque...">
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
-        <button class="btn btn-sm" onclick="fermerModalPaiement()" style="background:var(--bg3);border-color:var(--border)">Annuler</button>
-        <button class="btn btn-sm" onclick="validerPaiementModal()" style="background:#68d391;color:#0a0e1a;border-color:#68d391;font-weight:700">✓ Valider</button>
-      </div>
-    </div>`;
-  modal.addEventListener('click',e=>{if(e.target===modal)fermerModalPaiement();});
-  modal._locId=String(locDefaut.id);
-  modal._mk=mk;
-  document.body.appendChild(modal);
-  setTimeout(()=>document.getElementById('mpl-montant')?.focus(),50);
-}
 
 
 function mplChangerLocataire(newLocId, mk){
   const modal=document.getElementById('modal-paiement-loyer');
   if(!modal)return;
-  modal._locId=String(newLocId);
+  modal._locId=newLocId;
+  const champs=document.getElementById('mpl-champs-paiement');
+  const vacantInfo=document.getElementById('mpl-vacant-info');
+
+  if(newLocId==='vacant'){
+    if(champs)champs.style.display='none';
+    if(vacantInfo)vacantInfo.style.display='block';
+    return;
+  }
+  if(champs)champs.style.display='';
+  if(vacantInfo)vacantInfo.style.display='none';
+
   const locs=loadLocataires();
   const loc=locs.find(l=>String(l.id)===String(newLocId));
   if(!loc)return;
   const existing=(loc.paiements||{})[mk]||{};
   const montant=existing.montant||loc.lastMontantLoyer||getMontantPeriode(loc,mk).total;
   const date=existing.date||mk+'-01';
-  const el=document.getElementById('mpl-montant');
-  const eld=document.getElementById('mpl-date');
-  if(el)el.value=montant;
-  if(eld)eld.value=date;
+  const elM=document.getElementById('mpl-montant');
+  const elD=document.getElementById('mpl-date');
+  if(elM)elM.value=montant;
+  if(elD)elD.value=date;
+  // Mettre à jour la référence période
+  const ref=document.querySelector('#mpl-champs-paiement .form-group:first-child div');
+  if(ref)ref.textContent='Référence période : '+fmt(getMontantPeriode(loc,mk).total);
 }
 
 function fermerModalPaiement(){
@@ -3359,26 +3325,48 @@ function validerPaiementModal(){
   if(!modal)return;
   const locId=modal._locId;
   const mk=modal._mk;
-  const date=document.getElementById('mpl-date').value;
-  const montant=+document.getElementById('mpl-montant').value||0;
+  const logKey=modal._logKey;
+  const locs=loadLocataires();
+
+  // Cas VACANT : marquer le mois comme vacant sur tous les locataires du logement
+  if(locId==='vacant'){
+    // Effacer tout paiement existant pour ce mois sur ce logement
+    if(logKey){
+      locs.filter(l=>l.logement===logKey).forEach(l=>{
+        if(l.paiements&&l.paiements[mk])delete l.paiements[mk];
+      });
+    }
+    saveLocataires(locs);
+    fermerModalPaiement();
+    renderLocataires();
+    return;
+  }
+
+  const date=document.getElementById('mpl-date')?.value;
+  const montant=+(document.getElementById('mpl-montant')?.value)||0;
   const note=document.getElementById('mpl-note')?.value||'';
   if(!date){
     const el=document.getElementById('mpl-date');
     if(el)el.style.borderColor='var(--red)';
     return;
   }
-  const locs=loadLocataires();
   const loc=locs.find(l=>String(l.id)===String(locId));
   if(!loc)return;
+
+  // Si le logement a changé de locataire, effacer le paiement de l'ancien locataire pour ce mois
+  if(logKey){
+    locs.filter(l=>l.logement===logKey&&String(l.id)!==String(locId)).forEach(l=>{
+      if(l.paiements&&l.paiements[mk])delete l.paiements[mk];
+    });
+  }
+
   if(!loc.paiements)loc.paiements={};
   loc.paiements[mk]={paye:true,date,montant,note};
 
-  // Mémoriser le dernier paiement pour pré-remplir le mois suivant
-  // La date suggérée pour le mois suivant = même jour du mois prochain
+  // Mémoriser pour le mois suivant
   const dateObj=new Date(date+'T00:00:00');
-  const nextMonthDate=new Date(dateObj.getFullYear(), dateObj.getMonth()+1, dateObj.getDate());
-  const nextDateStr=nextMonthDate.toISOString().slice(0,10);
-  loc.lastPaiement={montant, locId:String(locId), dateTemplate:nextDateStr};
+  const nextDate=new Date(dateObj.getFullYear(),dateObj.getMonth()+1,dateObj.getDate());
+  loc.lastPaiement={montant,locId:String(locId),dateTemplate:nextDate.toISOString().slice(0,10)};
   loc.lastMontantLoyer=montant;
 
   saveLocataires(locs);
