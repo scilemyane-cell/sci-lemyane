@@ -3160,8 +3160,9 @@ function marquerPaye(locId,mk){ouvrirModalPaiement(locId,mk);}
 
 function ouvrirModalPaiement(locId,mk){
   const locs=loadLocataires();
-  const loc=locs.find(l=>l.id===locId);
-  if(!loc)return;
+  // Comparaison souple : locId peut être string ou number
+  const loc=locs.find(l=>String(l.id)===String(locId));
+  if(!loc){console.error('Locataire non trouvé:',locId);return;}
   const existing=(loc.paiements||{})[mk]||{};
   const montantDefaut=existing.montant||getMontantPeriode(loc,mk).total;
   const dateDefaut=existing.date||mk+'-01';
@@ -3229,7 +3230,7 @@ function validerPaiementModal(){
   const montant=+document.getElementById('mpl-montant').value||0;
   if(!date){document.getElementById('mpl-date').style.borderColor='var(--red)';return;}
   const locs=loadLocataires();
-  const loc=locs.find(l=>l.id===locId);
+  const loc=locs.find(l=>String(l.id)===String(locId));
   if(!loc)return;
   if(!loc.paiements)loc.paiements={};
   loc.paiements[mk]={paye:true,date,montant};
@@ -3244,7 +3245,7 @@ function supprimerPaiementModal(){
   const locId=modal._locId;
   const mk=modal._mk;
   const locs=loadLocataires();
-  const loc=locs.find(l=>l.id===locId);
+  const loc=locs.find(l=>String(l.id)===String(locId));
   if(!loc)return;
   if(loc.paiements&&loc.paiements[mk])delete loc.paiements[mk];
   saveLocataires(locs);
