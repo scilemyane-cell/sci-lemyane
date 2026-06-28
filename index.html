@@ -3035,11 +3035,20 @@ function renderLocataires(){
     const MOIS=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
     // Trouver quel locataire était actif pour chaque mois
     const getPaieInfo=(dMk)=>{
-      const locForMonth=allLocsForLog.find(l=>isLocataireActifCeMois(l,dMk));
+      // 1. Chercher si un locataire a un paiement (payé OU vacant explicite) pour ce mois
+      const locAvecPaiement=allLocsForLog.find(l=>(l.paiements||{})[dMk]);
+      if(locAvecPaiement){
+        const pp=(locAvecPaiement.paiements||{})[dMk];
+        if(pp.vacant)return{vacant:true,explicit:true};
+        if(pp.paye)return{locForMonth:locAvecPaiement,pp,isFutur:dMk>mk,vacant:false};
+      }
+      // 2. Chercher le locataire actif ce mois (trié du plus récent au plus ancien)
+      const sorted=[...allLocsForLog].sort((a,b)=>(b.dateEntree||'').localeCompare(a.dateEntree||''));
+      const locForMonth=sorted.find(l=>isLocataireActifCeMois(l,dMk));
       if(!locForMonth)return{vacant:true};
       const pp=(locForMonth.paiements||{})[dMk];
       const isFutur=dMk>mk;
-      return{locForMonth,pp,isFutur};
+      return{locForMonth,pp,isFutur,vacant:false};
     };
     return`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
       <button class="btn btn-sm" onclick="_locCalYear=${calYear-1};renderLocataires()" ${calYear<=firstYear?'disabled':''}>‹ ${calYear-1}</button>
@@ -3049,6 +3058,7 @@ function renderLocataires(){
     <div style="display:grid;grid-template-columns:repeat(12,1fr);gap:4px">
       ${months.map(({mi,dMk})=>{
         const info=getPaieInfo(dMk);
+        if(info.vacant&&info.explicit)return`<div class="loc-cal-cell" style="background:rgba(99,179,237,.1);border:1px solid rgba(99,179,237,.3);color:#63b3ed;cursor:pointer;border-radius:4px;aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700" title="${MOIS[mi-1]} ${calYear} — Marqué Vacant — Cliquer pour modifier" onclick="ouvrirModalPaiement('vacant','${dMk}','${lg.key}')">V</div>`;
         if(info.vacant)return`<div class="loc-cal-cell loc-cal-vacant" title="${MOIS[mi-1]} ${calYear} — Vacant — Cliquer pour saisir" style="cursor:pointer" onclick="ouvrirModalPaiement('vacant','${dMk}','${lg.key}')">○</div>`;
         if(info.isFutur)return`<div class="loc-cal-cell loc-cal-futur" title="${MOIS[mi-1]} ${calYear}">${MOIS[mi-1]}</div>`;
         if(info.pp&&info.pp.paye)return`<div class="loc-cal-cell loc-cal-paye" title="${MOIS[mi-1]} — Payé${info.pp.date?' le '+fmtDate(info.pp.date):''} — Cliquer pour modifier" style="cursor:pointer" onclick="ouvrirModalPaiement('${info.locForMonth.id}','${dMk}','${lg.key}')">${MOIS[mi-1]}</div>`;
@@ -3328,13 +3338,18 @@ function validerPaiementModal(){
   const logKey=modal._logKey;
   const locs=loadLocataires();
 
-  // Cas VACANT : marquer le mois comme vacant sur tous les locataires du logement
+  // Cas VACANT : marquer le mois comme vacant explicitement
   if(locId==='vacant'){
-    // Effacer tout paiement existant pour ce mois sur ce logement
-    if(logKey){
-      locs.filter(l=>l.logement===logKey).forEach(l=>{
-        if(l.paiements&&l.paiements[mk])delete l.paiements[mk];
-      });
+    const logsLocs=locs.filter(l=>l.logement===logKey);
+    // Effacer tout paiement existant pour ce mois
+    logsLocs.forEach(l=>{
+      if(l.paiements&&l.paiements[mk])delete l.paiements[mk];
+    });
+    // Stocker le flag vacant sur le locataire le plus récent pour que le calendrier le détecte
+    const locRecent=logsLocs.sort((a,b)=>(b.dateEntree||'').localeCompare(a.dateEntree||''))[0];
+    if(locRecent){
+      if(!locRecent.paiements)locRecent.paiements={};
+      locRecent.paiements[mk]={vacant:true};
     }
     saveLocataires(locs);
     fermerModalPaiement();
@@ -3379,10 +3394,13 @@ function supprimerPaiementModal(){
   if(!modal)return;
   const locId=modal._locId;
   const mk=modal._mk;
+  const logKey=modal._logKey;
   const locs=loadLocataires();
-  const loc=locs.find(l=>String(l.id)===String(locId));
-  if(!loc)return;
-  if(loc.paiements&&loc.paiements[mk])delete loc.paiements[mk];
+  // Effacer sur tous les locataires du logement (paiement ou flag vacant)
+  const logsLocs=logKey?locs.filter(l=>l.logement===logKey):[locs.find(l=>String(l.id)===String(locId))].filter(Boolean);
+  logsLocs.forEach(l=>{
+    if(l.paiements&&l.paiements[mk])delete l.paiements[mk];
+  });
   saveLocataires(locs);
   fermerModalPaiement();
   renderLocataires();
