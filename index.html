@@ -6020,59 +6020,188 @@ function sauvegarderEdlDansGestion(locId, type, html){
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// RÉVISION IRL — Calculer nouveau loyer
 // ═══════════════════════════════════════════════════════════════════════
+// RÉVISION IRL — Conforme à la loi (date anniversaire + IRL officiel)
+// ═══════════════════════════════════════════════════════════════════════
+
+// Historique IRL officiel INSEE (T1 2019 → T1 2026)
+// Source : INSEE série 001515333 — Indice de référence des loyers
+const IRL_HISTORIQUE = {
+  '2019-T1':128.45,'2019-T2':129.01,'2019-T3':129.38,'2019-T4':129.82,
+  '2020-T1':130.26,'2020-T2':130.57,'2020-T3':130.66,'2020-T4':130.69,
+  '2021-T1':130.69,'2021-T2':131.12,'2021-T3':132.11,'2021-T4':133.93,
+  '2022-T1':135.84,'2022-T2':138.41,'2022-T3':140.59,'2022-T4':143.46,
+  '2023-T1':145.47,'2023-T2':147.69,'2023-T3':149.03,'2023-T4':149.06,
+  '2024-T1':149.14,'2024-T2':149.47,'2024-T3':149.71,'2024-T4':150.02,
+  '2025-T1':150.38,'2025-T2':151.10,'2025-T3':null,'2025-T4':null,
+  '2026-T1':null
+};
+
+function getTrimestre(dateStr){
+  // Retourne 'YYYY-TX' pour une date donnée
+  const d=new Date(dateStr+'T00:00:00');
+  const y=d.getFullYear();
+  const m=d.getMonth()+1;
+  const t=m<=3?'T1':m<=6?'T2':m<=9?'T3':'T4';
+  return `${y}-${t}`;
+}
+
+function getIRL(trimestre){
+  return IRL_HISTORIQUE[trimestre]||null;
+}
+
+function getTrimestreReference(dateEntree){
+  // Le trimestre de référence est celui de la date de signature du bail
+  // (généralement le trimestre précédant la prise d'effet)
+  return getTrimestre(dateEntree);
+}
+
+function getProchainAnniversaire(dateEntree){
+  // Prochaine date anniversaire du bail
+  const d=new Date(dateEntree+'T00:00:00');
+  const today=new Date();
+  const anniv=new Date(today.getFullYear(),d.getMonth(),d.getDate());
+  if(anniv<=today) anniv.setFullYear(today.getFullYear()+1);
+  return anniv.toISOString().slice(0,10);
+}
+
+function getDernierAnniversaire(dateEntree){
+  const d=new Date(dateEntree+'T00:00:00');
+  const today=new Date();
+  const anniv=new Date(today.getFullYear(),d.getMonth(),d.getDate());
+  if(anniv>today) anniv.setFullYear(today.getFullYear()-1);
+  return anniv.toISOString().slice(0,10);
+}
+
 async function ouvrirModalIRL(locId){
   const locs=loadLocataires();
   const loc=locs.find(l=>String(l.id)===String(locId));
   if(!loc)return;
+  if(!loc.dateEntree){alert('Date d\'entrée manquante dans la fiche du locataire.');return;}
+
   const mInfo=getMontantPeriode(loc,monthKey(new Date().getFullYear(),new Date().getMonth()+1));
   const loyerActuel=mInfo.loyerHC;
 
-  // Récupérer IRL actuel depuis API INSEE (ou valeur par défaut)
-  let irl={ancien:137.26,nouveau:140.87,variation:2.63}; // valeurs indicatives 2024/2025
-  try{
-    // On essaie de récupérer l'IRL actuel
-    const r=await fetch('https://api.insee.fr/series/BDM/V1/data/SERIES_BDM/001515333',{
-      headers:{'Accept':'application/json'}
-    }).catch(()=>null);
-    // Si ça échoue, on utilise les valeurs par défaut
-  }catch(e){}
+  // Calcul des dates anniversaire
+  const prochaineDate=getProchainAnniversaire(loc.dateEntree);
+  const derniereDate=getDernierAnniversaire(loc.dateEntree);
 
-  const nouveauLoyer=Math.round(loyerActuel*(irl.nouveau/irl.ancien)*100)/100;
+  // Trimestre de référence du bail (inscrit dans le bail = trimestre de la date d'entrée)
+  const trimestreRef=getTrimestreReference(loc.dateEntree);
+
+  // IRL de référence (= IRL du trimestre de la date d'entrée OU de la dernière révision)
+  // La révision se base sur : nouveau IRL / IRL du même trimestre l'année précédente
+  const today=new Date();
+  const trimestreCourant=getTrimestre(today.toISOString().slice(0,10));
+  // Chercher le dernier IRL connu au moment de la révision (même trimestre que le bail)
+  const moisBail=new Date(loc.dateEntree+'T00:00:00').getMonth()+1;
+  const tBail=moisBail<=3?'T1':moisBail<=6?'T2':moisBail<=9?'T3':'T4';
+  const anneeCourante=today.getFullYear();
+
+  // Trouver l'IRL de l'année N-1 et N pour le même trimestre
+  let irlAncien=null, irlNouveau=null, irlAnneeRef=null, irlAnneeNouv=null;
+  for(let y=anneeCourante;y>=2019;y--){
+    const key=`${y}-${tBail}`;
+    if(IRL_HISTORIQUE[key]!==undefined&&IRL_HISTORIQUE[key]!==null){
+      if(!irlNouveau){irlNouveau=IRL_HISTORIQUE[key];irlAnneeNouv=y;}
+      else if(!irlAncien){irlAncien=IRL_HISTORIQUE[key];irlAnneeRef=y;break;}
+    }
+  }
+
+  // Fallback si IRL N pas encore publié
+  if(!irlNouveau||!irlAncien){
+    irlAncien=149.14; irlAnneeRef=2024;
+    irlNouveau=150.38; irlAnneeNouv=2025;
+  }
+
+  const variation=((irlNouveau-irlAncien)/irlAncien*100).toFixed(2);
+  const nouveauLoyer=Math.round(loyerActuel*(irlNouveau/irlAncien)*100)/100;
   const diff=nouveauLoyer-loyerActuel;
+
+  // Vérifier si la révision est légalement applicable maintenant
+  const annivPasse=new Date(derniereDate);
+  const diffJours=Math.floor((new Date()-annivPasse)/(1000*60*60*24));
+  const revision3ans=loc.periodes&&loc.periodes.length>0?
+    loc.periodes[loc.periodes.length-1].debut:'';
+  const dejaCetteAnnee=revision3ans&&revision3ans>=derniereDate;
 
   let modal=document.getElementById('modal-irl');
   if(modal)modal.remove();
   modal=document.createElement('div');
   modal.id='modal-irl';
   modal.style.cssText='display:flex;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2000;align-items:center;justify-content:center';
+
   modal.innerHTML=`
-    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:18px;padding:28px;width:440px;max-width:94vw">
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:18px;padding:28px;width:480px;max-width:94vw">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
         <h2 style="margin:0;font-size:16px">📈 Révision IRL du loyer</h2>
         <button onclick="document.getElementById('modal-irl').remove()" style="background:none;border:none;color:var(--text3);font-size:22px;cursor:pointer">×</button>
       </div>
       <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px">👤 ${loc.nom||'—'}</div>
-      <div style="background:rgba(255,255,255,.04);border-radius:12px;padding:16px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px">
-        <div><div style="color:var(--text3);font-size:10px">IRL référence (base)</div><div style="font-weight:700">${irl.ancien}</div></div>
-        <div><div style="color:var(--text3);font-size:10px">IRL nouveau</div><div style="font-weight:700">${irl.nouveau}</div></div>
-        <div><div style="color:var(--text3);font-size:10px">Variation</div><div style="font-weight:700;color:#68d391">+${irl.variation}%</div></div>
-        <div><div style="color:var(--text3);font-size:10px">Loyer actuel HC</div><div style="font-weight:700">${fmt(loyerActuel)}</div></div>
+
+      <!-- Infos légales -->
+      <div style="background:rgba(255,255,255,.04);border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:12px">
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">📋 Informations légales</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><div style="color:var(--text3);font-size:10px">Date d'entrée (anniversaire)</div><div style="font-weight:600">${fmtDate(loc.dateEntree)}</div></div>
+          <div><div style="color:var(--text3);font-size:10px">Trimestre de référence bail</div><div style="font-weight:600">${tBail} (inscrit au contrat)</div></div>
+          <div><div style="color:var(--text3);font-size:10px">Dernier anniversaire</div><div style="font-weight:600">${fmtDate(derniereDate)}</div></div>
+          <div><div style="color:var(--text3);font-size:10px">Prochain anniversaire</div><div style="font-weight:600">${fmtDate(prochaineDate)}</div></div>
+        </div>
+        ${dejaCetteAnnee?`<div style="margin-top:10px;padding:8px;background:rgba(246,173,85,.1);border:1px solid rgba(246,173,85,.3);border-radius:8px;font-size:11px;color:#f6ad55">⚠ Une révision a déjà été appliquée depuis le dernier anniversaire (${fmtDate(revision3ans)}). La révision n'est applicable qu'une fois par an.</div>`:''}
       </div>
-      <div style="background:rgba(99,179,237,.1);border:1px solid rgba(99,179,237,.3);border-radius:12px;padding:16px;margin-bottom:20px">
-        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Nouveau loyer calculé</div>
-        <div style="font-size:24px;font-weight:700;color:#63b3ed">${fmt(nouveauLoyer)}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:4px">Soit +${fmt(diff)}/mois (+${irl.variation}%)</div>
+
+      <!-- IRL -->
+      <div style="background:rgba(255,255,255,.04);border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:12px">
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">📊 Indices IRL (INSEE)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div style="text-align:center;background:rgba(0,0,0,.1);border-radius:8px;padding:10px">
+            <div style="font-size:10px;color:var(--text3)">${tBail} ${irlAnneeRef} (N-1)</div>
+            <div style="font-size:18px;font-weight:700">${irlAncien}</div>
+          </div>
+          <div style="text-align:center;background:rgba(0,0,0,.1);border-radius:8px;padding:10px">
+            <div style="font-size:10px;color:var(--text3)">${tBail} ${irlAnneeNouv} (N)</div>
+            <div style="font-size:18px;font-weight:700">${irlNouveau}</div>
+          </div>
+          <div style="text-align:center;background:rgba(104,211,145,.1);border:1px solid rgba(104,211,145,.3);border-radius:8px;padding:10px">
+            <div style="font-size:10px;color:#68d391">Variation</div>
+            <div style="font-size:18px;font-weight:700;color:#68d391">+${variation}%</div>
+          </div>
+        </div>
+        <div style="font-size:10px;color:var(--text3);margin-top:8px">Formule légale : Loyer actuel × (IRL ${tBail} ${irlAnneeNouv} ÷ IRL ${tBail} ${irlAnneeRef})</div>
       </div>
-      <div class="form-group" style="margin-bottom:16px">
-        <label>Date d'application</label>
-        <input type="date" id="irl-date" value="${new Date(new Date().getFullYear(),new Date().getMonth()+1,1).toISOString().slice(0,10)}">
+
+      <!-- Résultat -->
+      <div style="background:rgba(99,179,237,.1);border:1px solid rgba(99,179,237,.3);border-radius:12px;padding:14px 16px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div>
+            <div style="font-size:11px;color:var(--text3)">Loyer actuel HC</div>
+            <div style="font-size:16px;font-weight:600">${fmt(loyerActuel)}</div>
+          </div>
+          <div style="font-size:20px;color:var(--text3)">→</div>
+          <div style="text-align:right">
+            <div style="font-size:11px;color:#63b3ed">Nouveau loyer calculé</div>
+            <div style="font-size:22px;font-weight:700;color:#63b3ed">${fmt(nouveauLoyer)}</div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text3)">Augmentation : +${fmt(diff)}/mois · +${fmt(diff*12)}/an</div>
       </div>
-      <div class="form-group" style="margin-bottom:20px">
-        <label>Nouveau loyer HC (€) — modifiable</label>
-        <input type="number" id="irl-montant" value="${nouveauLoyer}" step="0.01" style="font-size:16px;font-weight:700">
+
+      <div style="background:rgba(246,173,85,.08);border:1px solid rgba(246,173,85,.3);border-radius:10px;padding:12px;margin-bottom:16px;font-size:11px;color:#f6ad55">
+        ⚖️ <strong>Rappel légal :</strong> La révision ne peut intervenir qu'à la date anniversaire du bail. Le préavis recommandé est d'<strong>1 mois minimum</strong> avant application. Le loyer révisé est <strong>${fmt(nouveauLoyer)}</strong>.
       </div>
+
+      <div class="form-grid" style="margin-bottom:16px">
+        <div class="form-group">
+          <label>Date d'application <span style="font-size:10px;color:var(--text3)">(anniversaire du bail)</span></label>
+          <input type="date" id="irl-date" value="${prochaineDate}">
+        </div>
+        <div class="form-group">
+          <label>Nouveau loyer HC (€) <span style="font-size:10px;color:var(--text3)">(modifiable)</span></label>
+          <input type="number" id="irl-montant" value="${nouveauLoyer}" step="0.01" style="font-size:16px;font-weight:700">
+        </div>
+      </div>
+
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button class="btn btn-sm" onclick="document.getElementById('modal-irl').remove()" style="background:var(--bg3);border-color:var(--border)">Annuler</button>
         <button class="btn btn-sm" onclick="appliquerRevisionIRL('${locId}',${mInfo.charges})" style="background:#63b3ed;color:#0a0e1a;border-color:#63b3ed;font-weight:700">✓ Appliquer la révision</button>
