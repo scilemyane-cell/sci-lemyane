@@ -3205,6 +3205,9 @@ function renderLocataires(){
       <div style="display:flex;gap:10px;flex-shrink:0">
         <button class="btn btn-sm btn-edit" onclick="openLocModal('${cur.id}')">✏ Modifier</button>
         <button class="btn btn-sm" style="background:rgba(104,211,145,.1);border-color:rgba(104,211,145,.3);color:#68d391" onclick="ouvrirModalQuittance('${cur.id}')">📄 Quittance</button>
+        <button class="btn btn-sm" style="background:rgba(99,179,237,.1);border-color:rgba(99,179,237,.3);color:#63b3ed" onclick="genererBail('${cur.id}')">📝 Bail</button>
+        <button class="btn btn-sm" style="background:rgba(183,148,244,.1);border-color:rgba(183,148,244,.3);color:#b794f4" onclick="ouvrirEdl('${cur.id}','entree')">🔑 EDL entrée</button>
+        <button class="btn btn-sm" style="background:rgba(246,135,179,.1);border-color:rgba(246,135,179,.3);color:#f687b3" onclick="ouvrirEdl('${cur.id}','sortie')">🚪 EDL sortie</button>
         <button class="btn btn-sm" onclick="ouvrirModalPaiement('${cur.id}','${mk}','${lg.key}')">+ Encaisser loyer</button>
       </div>
     </div>
@@ -4871,8 +4874,8 @@ function buildQuittanceHTML(locId,mk,forPrint,isDuplicate){
   const totalTheo=montantLoyer+montantCharges;
   const totalReel=p.montant||totalTheo;
   const datePaiement=p.date?fmtDate(p.date):'—';
-  // Date d'émission = date du paiement (pas aujourd'hui)
-  const dateEmission=p.date?fmtDate(p.date):fmtDate(todayStr());
+  // Date d'émission : date du paiement pour original, date du jour pour duplicata
+  const dateEmission=isDuplicate?fmtDate(todayStr()):(p.date?fmtDate(p.date):fmtDate(todayStr()));
   const montantLettres=nombreEnLettres(totalReel);
   const adresseLogement=lg?lg.adresse:(cfg.nom+' — Logement '+l.logement);
   const nomBailleur=cfg.nom;
@@ -5023,10 +5026,575 @@ function validerModalQuittance(locId){
   openPrintOverlay(r.html,titre);
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// GÉNÉRATION BAIL
+// ═══════════════════════════════════════════════════════════════════════
+function genererBail(locId){
+  const locs=loadLocataires();
+  const loc=locs.find(l=>String(l.id)===String(locId));
+  if(!loc)return;
+  const cfg=getCTXConfig();
+  const lg=getLogementsActifs().find(x=>x.key===loc.logement);
+  const isMeuble=CTX==='lmnp';
+  const logoB64=getLogoB64();
+  const sigB64=typeof SIGNATURE_B64!=='undefined'?SIGNATURE_B64:'';
+  const mInfo=getMontantPeriode(loc,monthKey(new Date().getFullYear(),new Date().getMonth()+1));
+  const loyer=mInfo.loyerHC;
+  const charges=mInfo.charges;
+  const depot=(+loc.depot||loyer*2);
+  const adresse=lg?lg.adresse:(loc.logement);
+  const dateDebut=loc.dateEntree?fmtDate(loc.dateEntree):'_____________';
+  const dateFin=loc.dateSortie?fmtDate(loc.dateSortie):'_____________';
+  const duree=isMeuble?'12 mois (renouvelable par tacite reconduction)':'3 ans (renouvelable par tacite reconduction)';
+  const typeLogement=isMeuble?'meublé':'nu';
+  const loiBail=isMeuble?'Loi du 6 juillet 1989 – article 25-4 et suivants (bail meublé)':'Loi du 6 juillet 1989 (bail d\'habitation)';
+  const nomBailleur=cfg.nom;
+  const adresseBailleur=CTX==='sci'?'65 Chemin des Guignardières, 85300 Soullans':'21 Chemin du Vieux Renard, 85300 Challans';
+  const emailBailleur=CTX==='sci'?'sci.lemyane@gmail.com':'locationssallertaine@gmail.com';
+  const siret=CTX==='lmnp'?'SIRET 95210815700019':'';
+
+  const mobilierSection=isMeuble?`
+    <div class="section">
+      <div class="section-title">5. MOBILIER ET ÉQUIPEMENTS</div>
+      <p>Le logement est loué meublé. Il comprend notamment les équipements suivants (liste non exhaustive) :</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:10px 0;font-size:11px">
+        <div>☐ Literie (lit avec couette ou couverture)</div><div>☐ Volets ou rideaux dans les chambres</div>
+        <div>☐ Plaques de cuisson</div><div>☐ Four ou four à micro-ondes</div>
+        <div>☐ Réfrigérateur</div><div>☐ Congélateur ou compartiment</div>
+        <div>☐ Vaisselle</div><div>☐ Ustensiles de cuisine</div>
+        <div>☐ Table et sièges</div><div>☐ Étagères de rangement</div>
+        <div>☐ Luminaires</div><div>☐ Matériel d'entretien ménager</div>
+      </div>
+      <p style="font-size:10px;color:#666">La liste complète et l'état détaillé des meubles figurent dans l'état des lieux joint au présent bail.</p>
+    </div>`:'' ;
+
+  const html=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+  <title>Bail de location ${typeLogement} — ${loc.nom||''}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#1a202c;font-size:12px;line-height:1.7;padding:20mm 25mm;max-width:210mm;margin:0 auto}
+    .header-doc{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #2b6cb0;padding-bottom:14px;margin-bottom:20px}
+    .logo-block{display:flex;align-items:center;gap:12px}
+    .titre-bail{font-size:22px;font-weight:900;color:#2b6cb0;text-align:center;margin:20px 0 6px;text-transform:uppercase;letter-spacing:1px}
+    .sous-titre{text-align:center;font-size:13px;color:#4a5568;margin-bottom:24px;font-weight:600}
+    .section{margin-bottom:18px;page-break-inside:avoid}
+    .section-title{font-size:13px;font-weight:700;color:#2b6cb0;border-left:4px solid #2b6cb0;padding-left:10px;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px}
+    .info-grid{display:grid;grid-template-columns:160px 1fr;gap:4px 12px;margin-bottom:8px}
+    .info-label{color:#718096;font-size:11px;font-weight:600}
+    .info-val{font-size:11px;font-weight:600;color:#1a202c}
+    .montant-box{background:#ebf8ff;border:1px solid #bee3f8;border-radius:8px;padding:14px 18px;margin:10px 0}
+    .montant-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #e2e8f0;font-size:12px}
+    .montant-row.total{font-weight:700;color:#2b6cb0;font-size:14px;border-top:2px solid #bee3f8;border-bottom:none;margin-top:6px;padding-top:8px}
+    .article{margin-bottom:14px;font-size:11px}
+    .article p{margin-bottom:6px;text-align:justify}
+    .article ul{margin:6px 0 6px 20px}
+    .signatures{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:40px;page-break-inside:avoid}
+    .sig-block{text-align:center}
+    .sig-line{border-top:1px solid #2d3748;padding-top:8px;margin-top:60px}
+    .page-break{page-break-before:always}
+    .mentions-legales{font-size:9px;color:#a0aec0;margin-top:30px;padding-top:12px;border-top:1px solid #e2e8f0;text-align:justify}
+    @media print{@page{size:A4 portrait;margin:15mm 20mm}body{padding:0}}
+  </style></head><body>
+
+    <div class="header-doc">
+      <div class="logo-block">
+        <img src="${logoB64}" alt="Logo" style="height:65px;width:auto;object-fit:contain">
+        <div>
+          <div style="font-weight:700;font-size:13px">${nomBailleur}</div>
+          <div style="font-size:11px;color:#718096">${adresseBailleur}</div>
+          <div style="font-size:11px;color:#718096">${emailBailleur}</div>
+          ${siret?`<div style="font-size:10px;color:#718096">${siret}</div>`:''}
+        </div>
+      </div>
+      <div style="text-align:right;font-size:11px;color:#718096">
+        <div>Fait le : ${fmtDate(todayStr())}</div>
+        <div>Référence : BAIL-${String(loc.id).slice(-6)}</div>
+      </div>
+    </div>
+
+    <div class="titre-bail">Contrat de location ${typeLogement}</div>
+    <div class="sous-titre">${loiBail}</div>
+
+    <div class="section">
+      <div class="section-title">1. Parties au contrat</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div style="background:#f7fafc;border-radius:8px;padding:12px 16px">
+          <div style="font-weight:700;color:#2b6cb0;margin-bottom:8px;font-size:11px;text-transform:uppercase">Bailleur</div>
+          <div class="info-grid">
+            <span class="info-label">Désignation</span><span class="info-val">${nomBailleur}</span>
+            <span class="info-label">Adresse</span><span class="info-val">${adresseBailleur}</span>
+            <span class="info-label">Email</span><span class="info-val">${emailBailleur}</span>
+            ${siret?`<span class="info-label">SIRET</span><span class="info-val">${siret}</span>`:''}
+          </div>
+        </div>
+        <div style="background:#f7fafc;border-radius:8px;padding:12px 16px">
+          <div style="font-weight:700;color:#2b6cb0;margin-bottom:8px;font-size:11px;text-transform:uppercase">Locataire</div>
+          <div class="info-grid">
+            <span class="info-label">Nom complet</span><span class="info-val">${loc.nom||'_____________'}</span>
+            <span class="info-label">Téléphone</span><span class="info-val">${loc.tel||'_____________'}</span>
+            <span class="info-label">Email</span><span class="info-val">${loc.email||'_____________'}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">2. Désignation du logement</div>
+      <div class="info-grid">
+        <span class="info-label">Adresse</span><span class="info-val">${adresse}</span>
+        <span class="info-label">Type de bien</span><span class="info-val">Logement ${typeLogement}</span>
+        <span class="info-label">Usage</span><span class="info-val">Résidence principale</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">3. Durée du bail</div>
+      <div class="info-grid">
+        <span class="info-label">Date de prise d'effet</span><span class="info-val">${dateDebut}</span>
+        ${loc.dateSortie?`<span class="info-label">Date d'échéance</span><span class="info-val">${dateFin}</span>`:''}
+        <span class="info-label">Durée</span><span class="info-val">${duree}</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">4. Conditions financières</div>
+      <div class="montant-box">
+        <div class="montant-row"><span>Loyer mensuel hors charges</span><span>${fmt(loyer)}</span></div>
+        <div class="montant-row"><span>Provision mensuelle pour charges</span><span>${fmt(charges)}</span></div>
+        <div class="montant-row total"><span>Total mensuel dû</span><span>${fmt(loyer+charges)}</span></div>
+        <div class="montant-row" style="margin-top:8px"><span>Dépôt de garantie</span><span>${fmt(depot)}</span></div>
+      </div>
+      <div class="article">
+        <p>Le loyer est payable mensuellement, à terme échu, le 1er de chaque mois, par virement bancaire ou tout autre moyen convenu entre les parties.</p>
+        <p>Le loyer sera révisé chaque année à la date anniversaire du bail sur la base de l'Indice de Référence des Loyers (IRL) publié par l'INSEE.</p>
+        <p>Le dépôt de garantie ne peut être utilisé par le locataire pour se substituer au paiement du loyer. Il sera restitué dans un délai maximal d'un mois (logement meublé) ou deux mois (logement nu) après la remise des clés, déductions faites des sommes restant dues.</p>
+      </div>
+    </div>
+
+    ${mobilierSection}
+
+    <div class="section">
+      <div class="section-title">${isMeuble?'6':'5'}. Charges récupérables</div>
+      <div class="article">
+        <p>Les charges locatives récupérables comprennent notamment :</p>
+        <ul>
+          <li>Les dépenses d'entretien courant des parties communes</li>
+          <li>Les menues réparations des équipements mentionnés au contrat</li>
+          <li>Les taxes locatives (ordures ménagères…)</li>
+          ${isMeuble?'<li>Les fluides (eau, électricité) selon comptage individuel si applicable</li>':''}
+        </ul>
+        <p>La régularisation des charges intervient annuellement sur présentation des justificatifs.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">${isMeuble?'7':'6'}. Obligations des parties</div>
+      <div class="article">
+        <p><strong>Le bailleur s'engage à :</strong></p>
+        <ul>
+          <li>Délivrer le logement en bon état d'usage et de réparation</li>
+          <li>Assurer la jouissance paisible du logement</li>
+          <li>Entretenir les locaux en état de servir à l'usage prévu</li>
+          <li>Remettre une quittance de loyer sur demande du locataire</li>
+        </ul>
+        <p style="margin-top:8px"><strong>Le locataire s'engage à :</strong></p>
+        <ul>
+          <li>Payer le loyer et les charges aux termes convenus</li>
+          <li>User paisiblement des locaux loués</li>
+          <li>Répondre des dégradations survenues pendant la location</li>
+          <li>Souscrire une assurance contre les risques locatifs (justificatif à remettre annuellement)</li>
+          <li>Prévenir le bailleur de tout sinistre ou dégradation dans les meilleurs délais</li>
+          <li>Permettre l'accès aux lieux pour les travaux nécessaires</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">${isMeuble?'8':'7'}. Résiliation du bail</div>
+      <div class="article">
+        <p>Le locataire peut résilier le bail à tout moment, en respectant un préavis de :</p>
+        <ul>
+          ${isMeuble?'<li><strong>1 mois</strong> (logement meublé)</li>':'<li><strong>3 mois</strong> réduit à <strong>1 mois</strong> en zone tendue ou motif légitime et sérieux</li>'}
+        </ul>
+        <p>Le bailleur peut donner congé au locataire à l'échéance du bail, avec un préavis de ${isMeuble?'3':'6'} mois, pour reprise personnelle, vente ou motif légitime et sérieux.</p>
+        <p>Le congé doit être notifié par lettre recommandée avec accusé de réception, par acte d'huissier ou par remise en mains propres contre récépissé.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">${isMeuble?'9':'8'}. Dispositions diverses</div>
+      <div class="article">
+        <p>Le présent bail est soumis aux dispositions de la loi n°89-462 du 6 juillet 1989 et de ses textes d'application, ainsi qu'à toutes dispositions légales et réglementaires applicables à la location ${typeLogement}e.</p>
+        <p>Le locataire reconnaît avoir reçu : ☐ le Dossier de Diagnostic Technique (DDT) ☐ la notice d'information relative aux droits et obligations des locataires et bailleurs ☐ l'état des lieux d'entrée.</p>
+        <p>Pour tout litige, les parties s'engagent à privilégier la médiation. À défaut, le tribunal compétent sera celui du lieu de situation de l'immeuble.</p>
+      </div>
+    </div>
+
+    <div class="signatures">
+      <div class="sig-block">
+        <div style="font-weight:700;margin-bottom:4px">Le Bailleur</div>
+        <div style="font-size:11px;color:#718096;margin-bottom:4px">${nomBailleur}</div>
+        <div style="font-size:11px;color:#718096">Lu et approuvé</div>
+        ${sigB64?`<img src="${sigB64}" alt="Signature bailleur" style="height:60px;width:auto;object-fit:contain;margin:10px auto;display:block">`:'<div style="height:70px"></div>'}
+        <div class="sig-line">
+          <div style="font-size:10px;color:#718096">Signature et cachet</div>
+          <div style="font-size:10px;color:#718096">${fmtDate(todayStr())}</div>
+        </div>
+      </div>
+      <div class="sig-block">
+        <div style="font-weight:700;margin-bottom:4px">Le Locataire</div>
+        <div style="font-size:11px;color:#718096;margin-bottom:4px">${loc.nom||'_____________'}</div>
+        <div style="font-size:11px;color:#718096">Lu et approuvé</div>
+        <div style="height:${sigB64?'60px':'70px'}"></div>
+        <div class="sig-line">
+          <div style="font-size:10px;color:#718096">Signature précédée de la mention</div>
+          <div style="font-size:10px;color:#718096">"Lu et approuvé"</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mentions-legales">
+      Bail établi conformément à la loi n°89-462 du 6 juillet 1989, modifiée par la loi ALUR du 24 mars 2014 et la loi ELAN du 23 novembre 2018.
+      Document généré le ${fmtDate(todayStr())} par ${nomBailleur}.
+      Ce document est établi en deux exemplaires originaux, un pour chaque partie.
+    </div>
+
+  </body></html>`;
+
+  openPrintOverlay(html,`Bail ${typeLogement} — ${loc.nom||''}`);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// ÉTAT DES LIEUX — FORMULAIRE + PDF
+// ═══════════════════════════════════════════════════════════════════════
+const EDL_PIECES_DEFAULT=[
+  {id:'entree',label:'Entrée / Couloir',elements:['Sol','Murs','Plafond','Porte d\'entrée','Serrure / verrou','Sonnette','Interphone','Boîte aux lettres','Éclairage']},
+  {id:'sejour',label:'Séjour / Salon',elements:['Sol','Murs','Plafond','Fenêtres / Volets','Radiateur','Prises électriques','Interrupteurs','Éclairage']},
+  {id:'cuisine',label:'Cuisine',elements:['Sol','Murs','Plafond','Fenêtres / Volets','Plaques de cuisson','Four / Micro-ondes','Réfrigérateur','Évier / Robinetterie','Placards','Hotte','Lave-vaisselle','Prises électriques','Éclairage']},
+  {id:'chambre1',label:'Chambre 1',elements:['Sol','Murs','Plafond','Fenêtres / Volets','Radiateur','Placard','Prises électriques','Interrupteurs','Éclairage']},
+  {id:'chambre2',label:'Chambre 2',elements:['Sol','Murs','Plafond','Fenêtres / Volets','Radiateur','Placard','Prises électriques','Interrupteurs','Éclairage']},
+  {id:'sdb',label:'Salle de bain',elements:['Sol','Murs','Plafond','Fenêtres / Volets','Baignoire / Douche','Lavabo / Robinetterie','Miroir','WC','Radiateur sèche-serviettes','VMC / Aération','Éclairage']},
+  {id:'wc',label:'WC séparés',elements:['Sol','Murs','Plafond','WC / Chasse d\'eau','Porte','Éclairage']},
+  {id:'garage',label:'Garage / Cave',elements:['Sol','Murs','Porte / Portail','Éclairage']},
+  {id:'exterieur',label:'Extérieur / Terrasse',elements:['Sol / Terrasse','Portail / Portillon','Boîte aux lettres','Éclairage extérieur']}
+];
+
+const ETATS=['Neuf','Très bon état','Bon état','État d\'usage','Usé','Dégradé'];
+
+let _edlData={}; // {pieceId:{element:{etat,observation}}}
+let _edlType='entree'; // 'entree' ou 'sortie'
+let _edlLocId=null;
+let _edlPieces=[];
+
+function ouvrirEdl(locId, type){
+  _edlLocId=locId;
+  _edlType=type||'entree';
+  _edlData={};
+  _edlPieces=JSON.parse(JSON.stringify(EDL_PIECES_DEFAULT));
+
+  // Pré-remplir "Bon état" pour état d'entrée
+  if(_edlType==='entree'){
+    _edlPieces.forEach(p=>{
+      _edlData[p.id]={};
+      p.elements.forEach(e=>{_edlData[p.id][e]={etat:'Bon état',observation:''};});
+    });
+  }
+
+  let modal=document.getElementById('modal-edl');
+  if(modal)modal.remove();
+  modal=document.createElement('div');
+  modal.id='modal-edl';
+  modal.style.cssText='display:flex;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:3000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px 0';
+
+  const locs=loadLocataires();
+  const loc=locs.find(l=>String(l.id)===String(locId));
+  const cfg=getCTXConfig();
+  const lg=getLogementsActifs().find(x=>x.key===loc?.logement);
+
+  modal.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:18px;width:780px;max-width:96vw;overflow:hidden">
+      <div style="background:linear-gradient(135deg,#2b6cb0,#2c7a7b);padding:20px 26px;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:16px;font-weight:700;color:white">État des lieux ${_edlType==='entree'?'d\'ENTRÉE':'de SORTIE'}</div>
+          <div style="font-size:12px;color:rgba(255,255,255,.8);margin-top:2px">${loc?.nom||'—'} · ${lg?.adresse||lg?.label||'—'}</div>
+        </div>
+        <button onclick="document.getElementById('modal-edl').remove()" style="background:rgba(255,255,255,.2);border:none;color:white;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:18px;line-height:1">×</button>
+      </div>
+
+      <!-- Onglets pièces -->
+      <div style="display:flex;overflow-x:auto;border-bottom:2px solid var(--border2);background:rgba(0,0,0,.1);padding:0 16px" id="edl-pieces-tabs">
+        ${_edlPieces.map((p,i)=>`
+          <button onclick="edlSelectPiece('${p.id}')" id="edl-tab-${p.id}"
+            style="padding:10px 14px;border:none;background:transparent;color:${i===0?'#63b3ed':'var(--text3)'};font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;border-bottom:${i===0?'2px solid #63b3ed':'2px solid transparent'};margin-bottom:-2px;text-transform:uppercase;letter-spacing:.3px">
+            ${p.label}
+          </button>`).join('')}
+      </div>
+
+      <!-- Contenu pièce active -->
+      <div id="edl-piece-content" style="padding:20px 26px;max-height:55vh;overflow-y:auto"></div>
+
+      <!-- Infos générales & boutons -->
+      <div style="padding:16px 26px;border-top:1px solid var(--border2);background:rgba(0,0,0,.05)">
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+          <div class="form-group" style="margin:0;flex:1">
+            <label style="font-size:10px">Relevé compteurs (eau, élec, gaz)</label>
+            <input type="text" id="edl-compteurs" placeholder="ex: Eau 1234 m³ · Élec 5678 kWh" style="font-size:12px">
+          </div>
+          <div class="form-group" style="margin:0;flex:1">
+            <label style="font-size:10px">Nombre de clés remises</label>
+            <input type="text" id="edl-cles" placeholder="ex: 2 clés + 1 badge" style="font-size:12px">
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:12px">
+          <label style="font-size:10px">Observations générales</label>
+          <textarea id="edl-obs-generale" rows="2" placeholder="Remarques générales sur l'état du logement..." style="font-size:12px;resize:vertical"></textarea>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-sm" onclick="document.getElementById('modal-edl').remove()" style="background:var(--bg3);border-color:var(--border)">Annuler</button>
+          <button class="btn btn-sm" onclick="genererPdfEdl('${locId}')" style="background:var(--accent);color:#0a0e1a;border-color:var(--accent);font-weight:700">📄 Générer le PDF</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+  edlSelectPiece(_edlPieces[0].id);
+}
+
+function edlSelectPiece(pieceId){
+  // Sauvegarder les données de la pièce actuelle avant de changer
+  edlSauvegardePiece();
+
+  // Mettre à jour les onglets
+  _edlPieces.forEach(p=>{
+    const tab=document.getElementById('edl-tab-'+p.id);
+    if(!tab)return;
+    if(p.id===pieceId){
+      tab.style.color='#63b3ed';
+      tab.style.borderBottom='2px solid #63b3ed';
+    }else{
+      tab.style.color='var(--text3)';
+      tab.style.borderBottom='2px solid transparent';
+    }
+  });
+
+  // Afficher le contenu de la pièce sélectionnée
+  const piece=_edlPieces.find(p=>p.id===pieceId);
+  if(!piece)return;
+  window._edlActivePiece=pieceId;
+  if(!_edlData[pieceId])_edlData[pieceId]={};
+
+  const content=document.getElementById('edl-piece-content');
+  if(!content)return;
+  content.innerHTML=`
+    <div style="font-size:13px;font-weight:700;color:var(--text2);margin-bottom:14px;display:flex;align-items:center;gap:8px">
+      🏠 <span>${piece.label}</span>
+      <span style="font-size:10px;color:var(--text3);font-weight:400">(${piece.elements.length} éléments)</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${piece.elements.map(el=>{
+        const d=(_edlData[pieceId]&&_edlData[pieceId][el])||{etat:'Bon état',observation:''};
+        const etatColor={'Neuf':'#68d391','Très bon état':'#63b3ed','Bon état':'#4fd1c5','État d\'usage':'#f6ad55','Usé':'#fc8181','Dégradé':'#e53e3e'}[d.etat]||'var(--text2)';
+        return`<div style="background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:10px 14px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div style="font-size:12px;font-weight:600;color:var(--text);min-width:150px">${el}</div>
+            <select data-piece="${pieceId}" data-el="${el.replace(/'/g,'&#39;')}" class="edl-etat-sel"
+              style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg3);color:${etatColor};flex:0 0 auto"
+              onchange="edlUpdateEtat(this)">
+              ${ETATS.map(e=>`<option value="${e}" ${e===d.etat?'selected':''} style="color:${{'Neuf':'#68d391','Très bon état':'#63b3ed','Bon état':'#4fd1c5','État d\'usage':'#f6ad55','Usé':'#fc8181','Dégradé':'#e53e3e'}[e]||'inherit'}">${e}</option>`).join('')}
+            </select>
+            <input type="text" data-piece="${pieceId}" data-el="${el.replace(/'/g,'&#39;')}" class="edl-obs-el"
+              placeholder="Observation..." value="${d.observation||''}"
+              style="font-size:11px;flex:1;min-width:150px;padding:4px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg3);color:var(--text)"
+              onblur="edlUpdateObs(this)">
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <button onclick="edlAjouterElement('${pieceId}')" class="btn btn-sm" style="margin-top:10px;font-size:11px">+ Ajouter un élément</button>`;
+}
+
+function edlUpdateEtat(sel){
+  const pieceId=sel.dataset.piece;
+  const el=sel.dataset.el;
+  if(!_edlData[pieceId])_edlData[pieceId]={};
+  if(!_edlData[pieceId][el])_edlData[pieceId][el]={etat:'Bon état',observation:''};
+  _edlData[pieceId][el].etat=sel.value;
+  const colors={'Neuf':'#68d391','Très bon état':'#63b3ed','Bon état':'#4fd1c5','État d\'usage':'#f6ad55','Usé':'#fc8181','Dégradé':'#e53e3e'};
+  sel.style.color=colors[sel.value]||'var(--text2)';
+}
+function edlUpdateObs(inp){
+  const pieceId=inp.dataset.piece;
+  const el=inp.dataset.el;
+  if(!_edlData[pieceId])_edlData[pieceId]={};
+  if(!_edlData[pieceId][el])_edlData[pieceId][el]={etat:'Bon état',observation:''};
+  _edlData[pieceId][el].observation=inp.value;
+}
+function edlSauvegardePiece(){
+  // Lire tous les selects/inputs visibles et sauvegarder
+  document.querySelectorAll('.edl-etat-sel').forEach(sel=>edlUpdateEtat(sel));
+  document.querySelectorAll('.edl-obs-el').forEach(inp=>edlUpdateObs(inp));
+}
+function edlAjouterElement(pieceId){
+  const nom=window.prompt('Nom du nouvel élément :');
+  if(!nom||!nom.trim())return;
+  const piece=_edlPieces.find(p=>p.id===pieceId);
+  if(!piece)return;
+  piece.elements.push(nom.trim());
+  if(!_edlData[pieceId])_edlData[pieceId]={};
+  _edlData[pieceId][nom.trim()]={etat:'Bon état',observation:''};
+  edlSelectPiece(pieceId);
+}
+
+function genererPdfEdl(locId){
+  edlSauvegardePiece();
+  const locs=loadLocataires();
+  const loc=locs.find(l=>String(l.id)===String(locId));
+  if(!loc)return;
+  const cfg=getCTXConfig();
+  const lg=getLogementsActifs().find(x=>x.key===loc.logement);
+  const logoB64=getLogoB64();
+  const sigB64=typeof SIGNATURE_B64!=='undefined'?SIGNATURE_B64:'';
+  const compteurs=document.getElementById('edl-compteurs')?.value||'';
+  const cles=document.getElementById('edl-cles')?.value||'';
+  const obsGen=document.getElementById('edl-obs-generale')?.value||'';
+  const nomBailleur=cfg.nom;
+  const adresseBailleur=CTX==='sci'?'65 Chemin des Guignardières, 85300 Soullans':'21 Chemin du Vieux Renard, 85300 Challans';
+  const typeLabel=_edlType==='entree'?"ENTRÉE":"SORTIE";
+
+  // Compter par état
+  let stats={};
+  ETATS.forEach(e=>{stats[e]=0;});
+  _edlPieces.forEach(p=>{
+    Object.values(_edlData[p.id]||{}).forEach(d=>{if(d.etat)stats[d.etat]=(stats[d.etat]||0)+1;});
+  });
+  const totalElements=Object.values(stats).reduce((s,n)=>s+n,0);
+
+  const etatColors={'Neuf':'#48bb78','Très bon état':'#63b3ed','Bon état':'#38b2ac','État d\'usage':'#e6a817','Usé':'#fc8181','Dégradé':'#e53e3e'};
+
+  const piecesHtml=_edlPieces.map(piece=>{
+    const elementsHtml=piece.elements.map(el=>{
+      const d=(_edlData[piece.id]&&_edlData[piece.id][el])||{etat:'—',observation:''};
+      const color=etatColors[d.etat]||'#718096';
+      return`<tr>
+        <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:11px">${el}</td>
+        <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:11px;font-weight:600;color:${color}">${d.etat||'—'}</td>
+        <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:11px;color:#718096">${d.observation||''}</td>
+      </tr>`;
+    }).join('');
+    return`<div style="margin-bottom:16px;page-break-inside:avoid">
+      <div style="background:#2b6cb0;color:white;padding:6px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700">${piece.label}</div>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 6px 6px;overflow:hidden">
+        <thead><tr style="background:#ebf8ff">
+          <th style="padding:5px 8px;text-align:left;font-size:10px;color:#2b6cb0;width:35%">Élément</th>
+          <th style="padding:5px 8px;text-align:left;font-size:10px;color:#2b6cb0;width:25%">État</th>
+          <th style="padding:5px 8px;text-align:left;font-size:10px;color:#2b6cb0">Observations</th>
+        </tr></thead>
+        <tbody>${elementsHtml}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+
+  const html=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+  <title>État des lieux d'${typeLabel} — ${loc.nom||''}</title>
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#1a202c;font-size:12px;padding:15mm 20mm;max-width:210mm;margin:0 auto}
+    @media print{@page{size:A4 portrait;margin:12mm 15mm}body{padding:0}}
+  </style></head><body>
+
+    <!-- En-tête -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #2b6cb0;padding-bottom:12px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <img src="${logoB64}" alt="Logo" style="height:60px;width:auto;object-fit:contain">
+        <div>
+          <div style="font-weight:700;font-size:12px">${nomBailleur}</div>
+          <div style="font-size:10px;color:#718096">${adresseBailleur}</div>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:18px;font-weight:900;color:#2b6cb0">ÉTAT DES LIEUX</div>
+        <div style="font-size:14px;font-weight:700;color:#e53e3e">${typeLabel}</div>
+        <div style="font-size:10px;color:#718096">Le ${fmtDate(todayStr())}</div>
+      </div>
+    </div>
+
+    <!-- Infos parties -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+      <div style="background:#f7fafc;border-radius:8px;padding:10px 12px">
+        <div style="font-size:10px;font-weight:700;color:#2b6cb0;margin-bottom:6px;text-transform:uppercase">Bailleur</div>
+        <div style="font-size:11px;font-weight:600">${nomBailleur}</div>
+        <div style="font-size:10px;color:#718096">${adresseBailleur}</div>
+      </div>
+      <div style="background:#f7fafc;border-radius:8px;padding:10px 12px">
+        <div style="font-size:10px;font-weight:700;color:#2b6cb0;margin-bottom:6px;text-transform:uppercase">Locataire</div>
+        <div style="font-size:11px;font-weight:600">${loc.nom||'—'}</div>
+        <div style="font-size:10px;color:#718096">${loc.tel||''}</div>
+      </div>
+      <div style="background:#f7fafc;border-radius:8px;padding:10px 12px">
+        <div style="font-size:10px;font-weight:700;color:#2b6cb0;margin-bottom:6px;text-transform:uppercase">Logement</div>
+        <div style="font-size:11px;font-weight:600">${lg?.label||'—'}</div>
+        <div style="font-size:10px;color:#718096">${lg?.adresse||''}</div>
+      </div>
+    </div>
+
+    <!-- Relevés & clés -->
+    ${(compteurs||cles)?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+      ${compteurs?`<div style="background:#fffaf0;border:1px solid #f6ad55;border-radius:8px;padding:10px 12px"><div style="font-size:10px;font-weight:700;color:#c05621;margin-bottom:4px">RELEVÉ COMPTEURS</div><div style="font-size:11px">${compteurs}</div></div>`:''}
+      ${cles?`<div style="background:#f0fff4;border:1px solid #68d391;border-radius:8px;padding:10px 12px"><div style="font-size:10px;font-weight:700;color:#276749;margin-bottom:4px">CLÉS REMISES</div><div style="font-size:11px">${cles}</div></div>`:''}
+    </div>`:''}
+
+    <!-- Bilan état -->
+    <div style="background:#ebf8ff;border:1px solid #bee3f8;border-radius:8px;padding:12px 16px;margin-bottom:16px">
+      <div style="font-size:11px;font-weight:700;color:#2b6cb0;margin-bottom:8px">BILAN GÉNÉRAL — ${totalElements} éléments contrôlés</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${ETATS.filter(e=>stats[e]>0).map(e=>`
+          <span style="background:${etatColors[e]}22;border:1px solid ${etatColors[e]}55;color:${etatColors[e]};padding:3px 10px;border-radius:12px;font-size:10px;font-weight:700">
+            ${e} : ${stats[e]}
+          </span>`).join('')}
+      </div>
+    </div>
+
+    <!-- Pièces -->
+    ${piecesHtml}
+
+    ${obsGen?`<div style="background:#fff5f5;border:1px solid #fed7d7;border-radius:8px;padding:12px 16px;margin-bottom:16px">
+      <div style="font-size:11px;font-weight:700;color:#c53030;margin-bottom:6px">OBSERVATIONS GÉNÉRALES</div>
+      <div style="font-size:11px">${obsGen}</div>
+    </div>`:''}
+
+    <!-- Signatures -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:30px;page-break-inside:avoid">
+      <div style="text-align:center">
+        <div style="font-weight:700;margin-bottom:4px;font-size:12px">Le Bailleur</div>
+        <div style="font-size:10px;color:#718096">${nomBailleur}</div>
+        ${sigB64?`<img src="${sigB64}" alt="Signature" style="height:55px;width:auto;margin:8px auto;display:block">`:'<div style="height:55px"></div>'}
+        <div style="border-top:1px solid #2d3748;padding-top:6px;font-size:10px;color:#718096">${fmtDate(todayStr())}</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-weight:700;margin-bottom:4px;font-size:12px">Le Locataire</div>
+        <div style="font-size:10px;color:#718096">${loc.nom||'—'}</div>
+        <div style="height:55px"></div>
+        <div style="border-top:1px solid #2d3748;padding-top:6px;font-size:10px;color:#718096">Signature précédée de "Lu et approuvé"</div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:9px;color:#a0aec0;text-align:justify">
+      État des lieux établi contradictoirement entre les parties en présence et en ${_edlType==='entree'?'début':'fin'} de bail.
+      Document généré le ${fmtDate(todayStr())} par ${nomBailleur}.
+      Établi en deux exemplaires originaux, un pour chaque partie.
+    </div>
+
+  </body></html>`;
+
+  document.getElementById('modal-edl')?.remove();
+  openPrintOverlay(html,`État des lieux ${typeLabel} — ${loc.nom||''}`);
+}
+
 function genererQuittance(locId,mk){
   // Compatibilité ancienne version
   ouvrirModalQuittance(locId);
 }
+
 
 
 // ── GESTION LOCATIVE — rendu synthèse + détail par logement ───────────────
