@@ -447,7 +447,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
       <button class="btn btn-sm" onclick="rentFiltresTout()" style="font-size:11px">✓ Tout sélectionner</button>
       <button class="btn btn-sm" onclick="rentFiltresReset()" style="font-size:11px">↺ Réinitialiser</button>
       <div style="flex:1"></div>
-      <button class="btn-export" onclick="ouvrirModalExport()">📤 Exporter...</button>
+      <button class="btn-export" onclick="ouvrirModalExport()">📤 Exporter loyers...</button>
+      <button class="btn-export" onclick="exportComptableAnnuel()" style="background:rgba(183,148,244,.1);border-color:rgba(183,148,244,.4);color:#b794f4">📊 Récap fiscal</button>
     </div>
   </div>
 
@@ -3208,6 +3209,8 @@ function renderLocataires(){
         <button class="btn btn-sm" style="background:rgba(99,179,237,.1);border-color:rgba(99,179,237,.3);color:#63b3ed" onclick="genererBail('${cur.id}')">📝 Bail</button>
         <button class="btn btn-sm" style="background:rgba(183,148,244,.1);border-color:rgba(183,148,244,.3);color:#b794f4" onclick="ouvrirEdl('${cur.id}','entree')">🔑 EDL entrée</button>
         <button class="btn btn-sm" style="background:rgba(246,135,179,.1);border-color:rgba(246,135,179,.3);color:#f687b3" onclick="ouvrirEdl('${cur.id}','sortie')">🚪 EDL sortie</button>
+        <button class="btn btn-sm" style="background:rgba(246,173,85,.1);border-color:rgba(246,173,85,.3);color:#f6ad55" onclick="ouvrirModalIRL('${cur.id}')">📈 Révision IRL</button>
+        ${Object.values(cur.paiements||{}).some(p=>!p.paye&&!p.vacant)?`<button class="btn btn-sm" style="background:rgba(252,129,129,.1);border-color:rgba(252,129,129,.3);color:#fc8181" onclick="ouvrirModalRelance('${cur.id}')">📧 Relance</button>`:''}
         <button class="btn btn-sm" onclick="ouvrirModalPaiement('${cur.id}','${mk}','${lg.key}')">+ Encaisser loyer</button>
       </div>
     </div>
@@ -3456,25 +3459,9 @@ function validerPaiementModal(){
   fermerModalPaiement();
   renderLocataires();
 
-  // Générer automatiquement la quittance et proposer l'envoi mail
+  // Générer automatiquement la quittance — bouton mail dans la toolbar
   const r=buildQuittanceHTML(locId,mk,true,false);
-  if(r){
-    openPrintOverlay(r.html,'Quittance — '+r.moisNom+' — '+(r.locataire.nom||''));
-    // Ajouter bouton "Envoyer par mail" dans la barre de l'aperçu
-    const overlay=document.getElementById('print-overlay');
-    if(overlay){
-      const existing=document.getElementById('btn-mail-quittance');
-      if(existing)existing.remove();
-      const btnMail=document.createElement('button');
-      btnMail.id='btn-mail-quittance';
-      btnMail.className='btn btn-sm';
-      btnMail.style.cssText='background:rgba(246,173,85,.1);border-color:rgba(246,173,85,.4);color:#f6ad55;margin-left:8px';
-      btnMail.textContent='📧 Envoyer par mail';
-      btnMail.onclick=()=>glEnvoyerQuittanceMail(locId,mk,btnMail);
-      const bar=overlay.querySelector('.print-toolbar');
-      if(bar)bar.insertBefore(btnMail,bar.querySelector('button:last-child'));
-    }
-  }
+  if(r) openPrintOverlay(r.html,'Quittance — '+r.moisNom+' — '+(r.locataire.nom||''),{locId,mk});
 }
 
 function supprimerPaiementModal(){
@@ -3747,14 +3734,19 @@ function renderParametres(){
             <div style="flex:1">
               <div style="font-size:13px;font-weight:600;color:var(--text)">${lg.label}</div>
               ${lg.adresse?`<div style="font-size:11px;color:var(--text3)">${lg.adresse}</div>`:''}
+              <div style="display:flex;gap:12px;margin-top:3px;flex-wrap:wrap">
+                ${lg.pdl?`<div style="font-size:10px;color:var(--text3)">⚡ PDL : <b style="color:var(--text2)">${lg.pdl}</b></div>`:''}
+                ${lg.compteurEau?`<div style="font-size:10px;color:var(--text3)">💧 Eau : <b style="color:var(--text2)">${lg.compteurEau}</b></div>`:''}
+              </div>
             </div>
-            <div style="display:flex;gap:6px;flex-shrink:0">
+            <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
               ${i>0?`<button class="btn btn-sm" onclick="deplacerLogement(${i},-1)" title="Monter">↑</button>`:''}
               ${i<logs.length-1?`<button class="btn btn-sm" onclick="deplacerLogement(${i},1)" title="Descendre">↓</button>`:''}
-              <button class="btn btn-sm btn-edit" onclick="ouvrirModalLogement(${i})">✏</button>
+              <button class="btn btn-sm btn-edit" onclick="ouvrirModalLogement(${i})">✏ Modifier</button>
               <button class="btn btn-sm" onclick="toggleLogement(${i})" style="${lg.actif!==false?'':'background:rgba(104,211,145,.1);border-color:rgba(104,211,145,.3);color:#68d391'}">
                 ${lg.actif!==false?'👁 Masquer':'👁 Afficher'}
               </button>
+              <button class="btn btn-sm" onclick="supprimerLogement(${i})" style="background:rgba(252,129,129,.08);border-color:rgba(252,129,129,.3);color:#fc8181" title="Supprimer définitivement">🗑</button>
             </div>
           </div>
         `).join('')}
@@ -3786,6 +3778,8 @@ function renderParametres(){
         <div class="form-grid">
           <div class="form-group"><label>Nom du logement *</label><input id="ml-label" type="text" placeholder="ex: Appartement T2, Studio..."></div>
           <div class="form-group"><label>Adresse</label><input id="ml-adresse" type="text" placeholder="ex: 12 rue de la Paix, 85000 ..."></div>
+          <div class="form-group"><label>⚡ PDL électricité <span style="font-size:10px;color:var(--text3)">(Point de livraison, 14 chiffres)</span></label><input id="ml-pdl" type="text" placeholder="ex: 12345678901234" maxlength="14"></div>
+          <div class="form-group"><label>💧 N° compteur eau</label><input id="ml-compteur-eau" type="text" placeholder="ex: 123456789"></div>
           <div class="form-group"><label>Couleur</label>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px" id="ml-colors">
               ${LOG_COLORS.map(c=>`<div onclick="selectLogColor('${c}')" style="width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:2px solid transparent;transition:.15s" data-color="${c}"></div>`).join('')}
@@ -3810,6 +3804,8 @@ function ouvrirModalLogement(idx){
   document.getElementById('modal-log-title').textContent=lg?'Modifier le logement':'Nouveau logement';
   document.getElementById('ml-label').value=lg?lg.label:'';
   document.getElementById('ml-adresse').value=lg?lg.adresse||'':'';
+  document.getElementById('ml-pdl').value=lg?lg.pdl||'':'';
+  document.getElementById('ml-compteur-eau').value=lg?lg.compteurEau||'':'';
   const color=lg?lg.color:LOG_COLORS[0];
   document.getElementById('ml-color').value=color;
   selectLogColor(color);
@@ -3827,21 +3823,32 @@ function sauvegarderLogement(){
   const label=document.getElementById('ml-label').value.trim();
   if(!label){document.getElementById('ml-label').style.borderColor='var(--red)';return;}
   const adresse=document.getElementById('ml-adresse').value.trim();
+  const pdl=(document.getElementById('ml-pdl')?.value||'').trim();
+  const compteurEau=(document.getElementById('ml-compteur-eau')?.value||'').trim();
   const color=document.getElementById('ml-color').value;
   const logs=loadLogements();
   if(_editLogIdx!==null){
-    logs[_editLogIdx]={...logs[_editLogIdx],label,adresse,color};
+    logs[_editLogIdx]={...logs[_editLogIdx],label,adresse,pdl,compteurEau,color};
   }else{
-    // Générer une clé unique
     const key='L'+(Date.now().toString(36).slice(-4).toUpperCase());
-    logs.push({key,label,adresse,color,actif:true});
+    logs.push({key,label,adresse,pdl,compteurEau,color,actif:true});
   }
   saveLogements(logs);
   document.getElementById('modal-logement').style.display='none';
   renderParametres();
-  // Recharger l'app pour appliquer les nouveaux logements partout
   setTimeout(()=>location.reload(),800);
 }
+function supprimerLogement(idx){
+  const logs=loadLogements();
+  if(!logs[idx])return;
+  const lg=logs[idx];
+  if(!confirm(`Supprimer définitivement "${lg.label}" ?\n\nAttention : les données des locataires associées à ce logement seront conservées mais le logement n'apparaîtra plus dans l'application.\n\nPour préserver l'historique, utilisez plutôt "Masquer".`))return;
+  logs.splice(idx,1);
+  saveLogements(logs);
+  renderParametres();
+  setTimeout(()=>location.reload(),600);
+}
+
 function toggleLogement(idx){
   const logs=loadLogements();
   if(!logs[idx])return;
@@ -5023,7 +5030,7 @@ function validerModalQuittance(locId){
   const r=buildQuittanceHTML(locId,mk,true,isDuplicate);
   if(!r)return;
   const titre='Quittance'+(isDuplicate?' (DUPLICATA)':'')+' — '+r.moisNom+' — '+(r.locataire.nom||'');
-  openPrintOverlay(r.html,titre);
+  openPrintOverlay(r.html,titre,isDuplicate?null:{locId,mk});
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -5534,6 +5541,8 @@ function genererPdfEdl(locId){
         <div style="font-size:10px;font-weight:700;color:#2b6cb0;margin-bottom:6px;text-transform:uppercase">Logement</div>
         <div style="font-size:11px;font-weight:600">${lg?.label||'—'}</div>
         <div style="font-size:10px;color:#718096">${lg?.adresse||''}</div>
+        ${lg?.pdl?`<div style="font-size:10px;color:#718096;margin-top:2px">⚡ PDL : <b>${lg.pdl}</b></div>`:''}
+        ${lg?.compteurEau?`<div style="font-size:10px;color:#718096">💧 Compteur eau : <b>${lg.compteurEau}</b></div>`:''}
       </div>
     </div>
 
@@ -5588,6 +5597,8 @@ function genererPdfEdl(locId){
 
   document.getElementById('modal-edl')?.remove();
   openPrintOverlay(html,`État des lieux ${typeLabel} — ${loc.nom||''}`);
+  // Sauvegarder dans la gestion locative
+  sauvegarderEdlDansGestion(locId, _edlType, html);
 }
 
 function genererQuittance(locId,mk){
@@ -5904,6 +5915,399 @@ function glEnvoyerMail(docId){
   });
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// RELANCE IMPAYÉS PAR EMAIL
+// ═══════════════════════════════════════════════════════════════════════
+async function envoyerRelanceImpayes(locId, mks, btn){
+  const locs=loadLocataires();
+  const loc=locs.find(l=>String(l.id)===String(locId));
+  if(!loc)return;
+  if(!loc.email){alert('Aucun email enregistré pour ce locataire.\nAjoutez-le dans sa fiche.');return;}
+  const cfg=getCTXConfig();
+  const lg=getLogementsActifs().find(x=>x.key===loc.logement);
+  const moisList=mks.map(mk=>{
+    const[yy,mm]=mk.split('-');
+    return new Date(+yy,+mm-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+  });
+  const totalDu=mks.reduce((s,mk)=>{
+    const mInfo=getMontantPeriode(loc,mk);
+    return s+mInfo.total;
+  },0);
+  const sujet=`Rappel de loyer impayé — ${cfg.nom}`;
+  const corps=`Madame, Monsieur ${loc.nom||''},\n\nSauf erreur de notre part, nous n'avons pas encore reçu le règlement de votre loyer pour la (les) période(s) suivante(s) :\n\n${moisList.map(m=>'• '+m).join('\n')}\n\nMontant total dû : ${fmt(totalDu)}\n\nNous vous remercions de bien vouloir procéder au règlement dans les meilleurs délais par virement bancaire.\n\nEn cas de difficultés, n'hésitez pas à nous contacter afin de trouver une solution amiable.\n\nCordialement,\n${cfg.nom}\n${lg?.adresse||''}\n${CTX==='lmnp'?'locationssallertaine@gmail.com':'sci.lemyane@gmail.com'}`;
+
+  if(btn){btn.disabled=true;btn.textContent='⏳ Envoi...';}
+  const ok=await createGmailDraft(loc.email,sujet,corps,null);
+  if(btn){btn.disabled=false;btn.textContent='📧 Relance mail';}
+  if(ok){
+    const gmailUrl=`https://mail.google.com/mail/u/0/?authuser=${cfg.gmail}#drafts`;
+    if(confirm('✓ Brouillon de relance créé dans Gmail.\n\nOuvrir Gmail pour envoyer ?')){
+      window.open(gmailUrl,'_blank');
+    }
+  }
+}
+
+function ouvrirModalRelance(locId){
+  const locs=loadLocataires();
+  const loc=locs.find(l=>String(l.id)===String(locId));
+  if(!loc)return;
+  const mk=monthKey(new Date().getFullYear(),new Date().getMonth()+1);
+  // Trouver tous les mois impayés
+  const impayes=getMonthsOccupied(loc).filter(m=>{
+    if(m>mk)return false;
+    const p=(loc.paiements||{})[m];
+    return !p||!p.paye;
+  });
+  if(!impayes.length){alert('Aucun impayé détecté pour ce locataire.');return;}
+  let modal=document.getElementById('modal-relance');
+  if(modal)modal.remove();
+  modal=document.createElement('div');
+  modal.id='modal-relance';
+  modal.style.cssText='display:flex;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2000;align-items:center;justify-content:center';
+  const moisHtml=impayes.map(mk=>{
+    const[yy,mm]=mk.split('-');
+    const label=new Date(+yy,+mm-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+    const mInfo=getMontantPeriode(loc,mk);
+    return`<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(252,129,129,.08);border:1px solid rgba(252,129,129,.2);border-radius:8px;cursor:pointer">
+      <input type="checkbox" value="${mk}" checked style="accent-color:#fc8181">
+      <span style="font-size:12px">${label}</span>
+      <span style="margin-left:auto;font-size:12px;font-weight:600;color:#fc8181">${fmt(mInfo.total)}</span>
+    </label>`;
+  }).join('');
+  modal.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:18px;padding:28px;width:420px;max-width:94vw">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <h2 style="margin:0;font-size:16px">📧 Relance impayés</h2>
+        <button onclick="document.getElementById('modal-relance').remove()" style="background:none;border:none;color:var(--text3);font-size:22px;cursor:pointer">×</button>
+      </div>
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px">👤 ${loc.nom||'—'}</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Sélectionnez les mois à inclure dans la relance :</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:20px" id="relance-mois-list">${moisHtml}</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-sm" onclick="document.getElementById('modal-relance').remove()" style="background:var(--bg3);border-color:var(--border)">Annuler</button>
+        <button class="btn btn-sm" id="btn-send-relance" onclick="validerRelance('${locId}')" style="background:#fc8181;color:#0a0e1a;border-color:#fc8181;font-weight:700">📧 Créer brouillon Gmail</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+  document.body.appendChild(modal);
+}
+
+async function validerRelance(locId){
+  const checks=document.querySelectorAll('#relance-mois-list input:checked');
+  const mks=[...checks].map(c=>c.value);
+  if(!mks.length){alert('Sélectionnez au moins un mois.');return;}
+  const btn=document.getElementById('btn-send-relance');
+  document.getElementById('modal-relance')?.remove();
+  await envoyerRelanceImpayes(locId,mks,btn);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// HISTORIQUE EDL — Stocker dans GL Docs
+// ═══════════════════════════════════════════════════════════════════════
+function sauvegarderEdlDansGestion(locId, type, html){
+  const docs=loadGLDocs();
+  const locs=loadLocataires();
+  const loc=locs.find(l=>String(l.id)===String(locId));
+  if(!loc)return;
+  const id='edl_'+Date.now();
+  const label=`État des lieux d'${type==='entree'?'entrée':'sortie'} — ${fmtDate(todayStr())}`;
+  docs.push({
+    id, logement:loc.logement, categorie:'edl',
+    libelle:label, dateCreation:todayStr(),
+    dateExpiration:'', lien:'', htmlContent:html
+  });
+  saveGLDocs(docs);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// RÉVISION IRL — Calculer nouveau loyer
+// ═══════════════════════════════════════════════════════════════════════
+async function ouvrirModalIRL(locId){
+  const locs=loadLocataires();
+  const loc=locs.find(l=>String(l.id)===String(locId));
+  if(!loc)return;
+  const mInfo=getMontantPeriode(loc,monthKey(new Date().getFullYear(),new Date().getMonth()+1));
+  const loyerActuel=mInfo.loyerHC;
+
+  // Récupérer IRL actuel depuis API INSEE (ou valeur par défaut)
+  let irl={ancien:137.26,nouveau:140.87,variation:2.63}; // valeurs indicatives 2024/2025
+  try{
+    // On essaie de récupérer l'IRL actuel
+    const r=await fetch('https://api.insee.fr/series/BDM/V1/data/SERIES_BDM/001515333',{
+      headers:{'Accept':'application/json'}
+    }).catch(()=>null);
+    // Si ça échoue, on utilise les valeurs par défaut
+  }catch(e){}
+
+  const nouveauLoyer=Math.round(loyerActuel*(irl.nouveau/irl.ancien)*100)/100;
+  const diff=nouveauLoyer-loyerActuel;
+
+  let modal=document.getElementById('modal-irl');
+  if(modal)modal.remove();
+  modal=document.createElement('div');
+  modal.id='modal-irl';
+  modal.style.cssText='display:flex;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2000;align-items:center;justify-content:center';
+  modal.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:18px;padding:28px;width:440px;max-width:94vw">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <h2 style="margin:0;font-size:16px">📈 Révision IRL du loyer</h2>
+        <button onclick="document.getElementById('modal-irl').remove()" style="background:none;border:none;color:var(--text3);font-size:22px;cursor:pointer">×</button>
+      </div>
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px">👤 ${loc.nom||'—'}</div>
+      <div style="background:rgba(255,255,255,.04);border-radius:12px;padding:16px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px">
+        <div><div style="color:var(--text3);font-size:10px">IRL référence (base)</div><div style="font-weight:700">${irl.ancien}</div></div>
+        <div><div style="color:var(--text3);font-size:10px">IRL nouveau</div><div style="font-weight:700">${irl.nouveau}</div></div>
+        <div><div style="color:var(--text3);font-size:10px">Variation</div><div style="font-weight:700;color:#68d391">+${irl.variation}%</div></div>
+        <div><div style="color:var(--text3);font-size:10px">Loyer actuel HC</div><div style="font-weight:700">${fmt(loyerActuel)}</div></div>
+      </div>
+      <div style="background:rgba(99,179,237,.1);border:1px solid rgba(99,179,237,.3);border-radius:12px;padding:16px;margin-bottom:20px">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Nouveau loyer calculé</div>
+        <div style="font-size:24px;font-weight:700;color:#63b3ed">${fmt(nouveauLoyer)}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Soit +${fmt(diff)}/mois (+${irl.variation}%)</div>
+      </div>
+      <div class="form-group" style="margin-bottom:16px">
+        <label>Date d'application</label>
+        <input type="date" id="irl-date" value="${new Date(new Date().getFullYear(),new Date().getMonth()+1,1).toISOString().slice(0,10)}">
+      </div>
+      <div class="form-group" style="margin-bottom:20px">
+        <label>Nouveau loyer HC (€) — modifiable</label>
+        <input type="number" id="irl-montant" value="${nouveauLoyer}" step="0.01" style="font-size:16px;font-weight:700">
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-sm" onclick="document.getElementById('modal-irl').remove()" style="background:var(--bg3);border-color:var(--border)">Annuler</button>
+        <button class="btn btn-sm" onclick="appliquerRevisionIRL('${locId}',${mInfo.charges})" style="background:#63b3ed;color:#0a0e1a;border-color:#63b3ed;font-weight:700">✓ Appliquer la révision</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+  document.body.appendChild(modal);
+}
+
+function appliquerRevisionIRL(locId, chargesActuelles){
+  const date=document.getElementById('irl-date')?.value;
+  const montant=+document.getElementById('irl-montant')?.value||0;
+  if(!date||!montant){alert('Date et montant obligatoires.');return;}
+  const locs=loadLocataires();
+  const loc=locs.find(l=>String(l.id)===String(locId));
+  if(!loc)return;
+  if(!loc.periodes)loc.periodes=[];
+  // Ajouter une nouvelle période
+  loc.periodes.push({debut:date,loyerHC:montant,charges:chargesActuelles});
+  loc.periodes.sort((a,b)=>a.debut.localeCompare(b.debut));
+  loc.loyerHC=montant; // Mettre à jour le loyer courant
+  saveLocataires(locs);
+  document.getElementById('modal-irl')?.remove();
+  renderLocataires();
+  alert(`✓ Révision appliquée !\nNouveau loyer de ${fmt(montant)} applicable à partir du ${fmtDate(date)}.`);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// EXPORT COMPTABLE ANNUEL
+// ═══════════════════════════════════════════════════════════════════════
+function exportComptableAnnuel(){
+  const nowY=new Date().getFullYear();
+  // Demander l'année
+  const anneeStr=window.prompt('Année fiscale à exporter :',String(nowY-1));
+  const annee=+anneeStr;
+  if(!annee||annee<2020||annee>nowY)return;
+
+  const{factures,budget}=loadData();
+  const locs=loadLocataires();
+  const cfg=getCTXConfig();
+  const logs=cfg.logements;
+
+  // Revenus locatifs
+  const rows=getLoyersExportRows(annee);
+  const totalLoyers=rows.filter(r=>r.statut==='Réglé').reduce((s,r)=>s+r.total,0);
+  const totalImpayes=rows.filter(r=>r.statut==='Impayé').reduce((s,r)=>s+r.totalTheorique,0);
+
+  // Charges déductibles (factures de l'année)
+  const factAnnee=factures.filter(f=>{
+    if(f.inclus===false)return false;
+    const y=+(f.date||f.dateFacture||'').slice(0,4);
+    return y===annee;
+  });
+  const totalCharges=factAnnee.reduce((s,f)=>s+(+f.ttc||0),0);
+
+  // Par catégorie
+  const parCat={};
+  factAnnee.forEach(f=>{
+    if(!parCat[f.cat])parCat[f.cat]=0;
+    parCat[f.cat]+=+f.ttc||0;
+  });
+
+  // Amortissements (crédits)
+  const fc=loadFC();
+  let totalMensualites=0;
+  let totalInterets=0;
+  logs.forEach(lg=>{
+    const d=fc[lg.key]||{};
+    if(d.capital&&d.taux&&d.duree){
+      const a=computeAmortization(+d.capital,+d.taux,+d.duree,d.tauxType==='variable'?d.tauxOverrides:{});
+      const yr=getCurrentLoanYear(d.debut,+d.duree);
+      const yearData=a.years&&a.years[yr-1];
+      if(yearData){
+        totalMensualites+=yearData.mensualite*12;
+        totalInterets+=(yearData.interets||0)*12;
+      }
+    }
+  });
+
+  const html=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+  <title>Récapitulatif fiscal ${annee} — ${cfg.nom}</title>
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#1a202c;font-size:12px;padding:20mm 25mm;max-width:210mm;margin:0 auto}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #2b6cb0;padding-bottom:14px;margin-bottom:20px}
+    h1{font-size:20px;font-weight:800;color:#2b6cb0;margin:0 0 4px}
+    .section-title{font-size:13px;font-weight:700;color:#2b6cb0;border-left:4px solid #2b6cb0;padding-left:10px;margin:18px 0 10px;text-transform:uppercase}
+    table{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:11px}
+    th{background:#ebf8ff;color:#2b6cb0;padding:6px 10px;text-align:left;font-size:10px;text-transform:uppercase}
+    td{padding:6px 10px;border-bottom:1px solid #e2e8f0}
+    .total-row{font-weight:700;background:#f7fafc}
+    .kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+    .kpi{background:#f7fafc;border-radius:8px;padding:12px 16px;border:1px solid #e2e8f0}
+    .kpi-val{font-size:20px;font-weight:700;color:#2b6cb0}
+    .kpi-label{font-size:10px;color:#718096;text-transform:uppercase;margin-top:4px}
+    .result-box{background:#ebf8ff;border:2px solid #bee3f8;border-radius:10px;padding:16px;margin:16px 0}
+    @media print{@page{size:A4 portrait;margin:15mm 20mm}body{padding:0}}
+  </style></head><body>
+
+    <div class="header">
+      <div style="display:flex;align-items:center;gap:12px">
+        <img src="${getLogoB64()}" alt="Logo" style="height:60px;width:auto;object-fit:contain">
+        <div>
+          <h1>${cfg.nom}</h1>
+          <div style="font-size:11px;color:#718096">Récapitulatif fiscal — Exercice ${annee}</div>
+          <div style="font-size:11px;color:#718096">Établi le ${fmtDate(todayStr())}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-val">${fmt(totalLoyers)}</div><div class="kpi-label">Revenus locatifs encaissés</div></div>
+      <div class="kpi"><div class="kpi-val">${fmt(totalCharges)}</div><div class="kpi-label">Charges déductibles</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:${totalLoyers-totalCharges>=0?'#276749':'#c53030'}">${fmt(totalLoyers-totalCharges)}</div><div class="kpi-label">Résultat net</div></div>
+    </div>
+
+    <!-- Revenus -->
+    <div class="section-title">1. Revenus locatifs ${annee}</div>
+    <table>
+      <thead><tr><th>Logement</th><th>Locataire</th><th>Mois</th><th style="text-align:right">Loyer HC</th><th style="text-align:right">Charges</th><th style="text-align:right">Total</th><th>Statut</th></tr></thead>
+      <tbody>
+        ${rows.filter(r=>r.statut==='Réglé').map(r=>`<tr>
+          <td>${r.logement}</td><td>${r.locataire}</td><td>${r.mois}</td>
+          <td style="text-align:right">${fmt(r.loyerHC)}</td>
+          <td style="text-align:right">${fmt(r.charges)}</td>
+          <td style="text-align:right">${fmt(r.total)}</td>
+          <td style="color:#276749">✓ Réglé — ${r.datePaiement}</td>
+        </tr>`).join('')}
+        <tr class="total-row"><td colspan="5">TOTAL REVENUS ENCAISSÉS</td><td style="text-align:right">${fmt(totalLoyers)}</td><td></td></tr>
+        ${totalImpayes>0?`<tr style="color:#c53030"><td colspan="5">Loyers non perçus (impayés)</td><td style="text-align:right">${fmt(totalImpayes)}</td><td>⚠ Non perçus</td></tr>`:''}
+      </tbody>
+    </table>
+
+    <!-- Charges -->
+    <div class="section-title">2. Charges et dépenses ${annee}</div>
+    <table>
+      <thead><tr><th>Catégorie</th><th style="text-align:right">Montant TTC</th><th>% du total</th></tr></thead>
+      <tbody>
+        ${Object.entries(parCat).sort((a,b)=>b[1]-a[1]).map(([cat,montant])=>`<tr>
+          <td>${cat}</td>
+          <td style="text-align:right">${fmt(montant)}</td>
+          <td style="color:#718096">${totalCharges>0?Math.round(montant/totalCharges*100):0}%</td>
+        </tr>`).join('')}
+        <tr class="total-row"><td>TOTAL CHARGES</td><td style="text-align:right">${fmt(totalCharges)}</td><td></td></tr>
+      </tbody>
+    </table>
+
+    ${totalInterets>0?`
+    <!-- Intérêts d'emprunt -->
+    <div class="section-title">3. Intérêts d'emprunt ${annee}</div>
+    <table>
+      <thead><tr><th>Logement</th><th style="text-align:right">Intérêts estimés</th></tr></thead>
+      <tbody>
+        ${logs.map(lg=>{
+          const d=fc[lg.key]||{};
+          if(!d.capital)return'';
+          const a=computeAmortization(+d.capital,+d.taux,+d.duree,d.tauxType==='variable'?d.tauxOverrides:{});
+          const yr=getCurrentLoanYear(d.debut,+d.duree);
+          const yearData=a.years&&a.years[yr-1];
+          const interets=yearData?(yearData.interets||0)*12:0;
+          return`<tr><td>${lg.label}</td><td style="text-align:right">${fmt(interets)}</td></tr>`;
+        }).join('')}
+        <tr class="total-row"><td>TOTAL INTÉRÊTS</td><td style="text-align:right">${fmt(totalInterets)}</td></tr>
+      </tbody>
+    </table>`:''}
+
+    <!-- Résultat -->
+    <div class="result-box">
+      <div style="font-size:13px;font-weight:700;color:#2b6cb0;margin-bottom:12px">📊 RÉSULTAT FISCAL ${annee}</div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:8px;font-size:12px">
+        <div>Revenus locatifs encaissés</div><div style="font-weight:600">${fmt(totalLoyers)}</div>
+        <div>— Charges déductibles</div><div style="font-weight:600">— ${fmt(totalCharges)}</div>
+        ${totalInterets>0?`<div>— Intérêts d'emprunt</div><div style="font-weight:600">— ${fmt(totalInterets)}</div>`:''}
+        <div style="font-weight:700;color:#2b6cb0;padding-top:8px;border-top:2px solid #bee3f8">= Résultat net</div>
+        <div style="font-weight:700;font-size:16px;color:${totalLoyers-totalCharges-totalInterets>=0?'#276749':'#c53030'};padding-top:8px;border-top:2px solid #bee3f8">${fmt(totalLoyers-totalCharges-totalInterets)}</div>
+      </div>
+    </div>
+
+    <div style="font-size:9px;color:#a0aec0;margin-top:20px;padding-top:10px;border-top:1px solid #e2e8f0">
+      Document à titre indicatif — établi le ${fmtDate(todayStr())} par ${cfg.nom}.
+      Pour votre déclaration fiscale, veuillez vérifier avec votre comptable.
+      Revenus à déclarer selon le régime applicable (IR/revenus fonciers, LMNP/BIC réel ou micro-BIC).
+    </div>
+
+  </body></html>`;
+
+  openPrintOverlay(html,`Récapitulatif fiscal ${annee} — ${cfg.nom}`);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// SYNC FIREBASE ÉTENDUE — Inclure locataires et logements
+// ═══════════════════════════════════════════════════════════════════════
+async function syncToCloudComplet(){
+  const{factures,budget}=loadData();
+  const fin=loadFinancement?loadFinancement():{};
+  const locs=loadLocataires();
+  const logs=loadLogements();
+  const proj=loadProjection?loadProjection():{};
+  const fc=loadFC();
+
+  const data={
+    budget,factures,fin,locataires:locs,
+    logements:logs,projection:proj,fc,
+    lastSync:new Date().toISOString()
+  };
+
+  try{
+    await window._setDoc(window._doc(window._db,CTX,'data'),data);
+    return true;
+  }catch(e){
+    console.error('Sync error',e);
+    return false;
+  }
+}
+
+async function loadFromCloudComplet(){
+  try{
+    const snap=await window._getDoc(window._doc(window._db,CTX,'data'));
+    if(!snap.exists())return false;
+    const d=snap.data();
+    if(d.budget)localStorage.setItem(ctxKey('budget3'),JSON.stringify(d.budget));
+    if(d.factures)localStorage.setItem(ctxKey('factures3'),JSON.stringify(d.factures));
+    if(d.fin)localStorage.setItem(ctxKey('fin4'),JSON.stringify(d.fin));
+    if(d.locataires)localStorage.setItem(ctxKey('locataires'),JSON.stringify(d.locataires));
+    if(d.logements)localStorage.setItem(ctxKey('logements_config'),JSON.stringify(d.logements));
+    if(d.projection)localStorage.setItem(ctxKey('projection'),JSON.stringify(d.projection));
+    if(d.fc)localStorage.setItem(ctxKey('fc'),JSON.stringify(d.fc));
+    return true;
+  }catch(e){
+    console.error('LoadCloud error',e);
+    return false;
+  }
+}
+
 async function glEnvoyerQuittanceMail(locId, mk, btn){
   const l=loadLocataires().find(x=>String(x.id)===String(locId));
   if(!l)return;
@@ -5952,13 +6356,26 @@ function glDemanderJustificatif(locId){
   });
 }
 
-function openPrintOverlay(html, title){
+function openPrintOverlay(html, title, opts){
+  // opts = {locId, mk} pour afficher le bouton mail quittance
   document.getElementById('print-overlay-title').textContent = title||'Aperçu impression';
   document.getElementById('print-overlay').classList.add('open');
   const frame = document.getElementById('print-frame');
   frame.dataset.ready='0';
   frame.onload=()=>{frame.dataset.ready='1';};
   frame.srcdoc = html;
+  // Bouton mail — visible seulement si quittance
+  const btnMail=document.getElementById('btn-mail-quittance-toolbar');
+  if(btnMail){
+    if(opts&&opts.locId&&opts.mk){
+      btnMail.style.display='inline-flex';
+      btnMail.onclick=()=>glEnvoyerQuittanceMail(opts.locId,opts.mk,btnMail);
+      btnMail.textContent='📧 Envoyer par mail';
+      btnMail.disabled=false;
+    } else {
+      btnMail.style.display='none';
+    }
+  }
 }
 function closePrintOverlay(){
   document.getElementById('print-overlay').classList.remove('open');
@@ -7283,6 +7700,7 @@ if(window._dbReady){
 <div class="print-overlay" id="print-overlay">
   <div class="print-toolbar">
     <h3 id="print-overlay-title">Aperçu impression</h3>
+    <button id="btn-mail-quittance-toolbar" onclick="" style="display:none;background:rgba(246,173,85,.1);border:1px solid rgba(246,173,85,.4);border-radius:6px;color:#f6ad55;padding:8px 14px;font-size:12px;cursor:pointer;font-weight:600;align-items:center;gap:6px">📧 Envoyer par mail</button>
     <button onclick="imprimerApercu()" style="background:#2b6cb0;border:none;border-radius:6px;color:#fff;padding:8px 18px;font-size:12px;cursor:pointer;font-weight:600">🖨 Imprimer / Sauvegarder PDF</button>
     <button onclick="closePrintOverlay()" style="background:rgba(252,129,129,.15);border:1px solid rgba(252,129,129,.4);border-radius:6px;color:#fc8181;padding:8px 14px;font-size:12px;cursor:pointer;font-weight:600">✕ Fermer</button>
   </div>
