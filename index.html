@@ -4737,7 +4737,7 @@ function ouvrirRentabiliteNette(){
         if(!debutAnnee||debutAnnee<1950||debutAnnee>2100)debutAnnee=nowY;
         const yr=annee-debutAnnee+1;
         const yearData=a.years&&a.years[yr-1];
-        if(yearData)interetsParLog[lg.label]=(yearData.interets||0)*12;
+        if(yearData)interetsParLog[lg.label]=yearData.interets||0;
       }catch(e){console.warn('Calcul intérêts impossible pour',lg.label,e);}
     }
   });
@@ -7555,7 +7555,7 @@ function exportComptableAnnuel(){
       const yearData=a.years&&a.years[yr-1];
       if(yearData){
         totalMensualites+=yearData.mensualite*12;
-        totalInterets+=(yearData.interets||0)*12;
+        totalInterets+=yearData.interets||0;
       }
     }
   });
@@ -7641,7 +7641,7 @@ function exportComptableAnnuel(){
           const a=computeAmortization(+d.capital,+d.taux,+d.duree,d.tauxType==='variable'?d.tauxOverrides:{});
           const yr=getCurrentLoanYear(d.debut,+d.duree);
           const yearData=a.years&&a.years[yr-1];
-          const interets=yearData?(yearData.interets||0)*12:0;
+          const interets=yearData?(yearData.interets||0):0;
           return`<tr><td>${lg.label}</td><td style="text-align:right">${fmt(interets)}</td></tr>`;
         }).join('')}
         <tr class="total-row"><td>TOTAL INTÉRÊTS</td><td style="text-align:right">${fmt(totalInterets)}</td></tr>
