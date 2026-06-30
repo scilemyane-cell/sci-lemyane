@@ -895,6 +895,42 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
   </div>
 </div>
 
+<!-- CHARGES RÉCURRENTES -->
+<div class="content" id="tab-charges-recurrentes">
+  <div class="section-title">🔁 Charges récurrentes</div>
+  <div style="background:rgba(99,179,237,.08);border:1px solid rgba(99,179,237,.25);border-radius:12px;padding:14px 18px;margin-bottom:20px;font-size:12px;color:var(--text2)">
+    ℹ️ Pour les charges sans facture papier (assurance annuelle, frais bancaires mensuels, abonnements...), définissez-les une fois ici. Elles seront automatiquement comptées chaque mois ou chaque année dans le calcul de rentabilité — sans avoir à ressaisir une facture.
+  </div>
+
+  <div class="table-wrap" style="padding:20px 24px;margin-bottom:20px">
+    <div class="section-title" style="margin:0 0 14px">+ Ajouter une charge récurrente</div>
+    <div class="form-grid">
+      <div class="form-group"><label>Libellé</label><input type="text" id="cr-libelle" placeholder="ex: Assurance PNO MAAF"></div>
+      <div class="form-group"><label>Catégorie</label><select id="cr-cat"></select></div>
+      <div class="form-group"><label>Logement</label>
+        <select id="cr-log"></select>
+      </div>
+      <div class="form-group"><label>Montant (€)</label><input type="number" id="cr-montant" step="0.01" placeholder="0.00"></div>
+      <div class="form-group"><label>Fréquence</label>
+        <select id="cr-frequence">
+          <option value="mensuel">Mensuel (tous les mois)</option>
+          <option value="trimestriel">Trimestriel</option>
+          <option value="annuel">Annuel (1x/an)</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Date de début</label><input type="date" id="cr-debut"></div>
+      <div class="form-group"><label>Date de fin <span style="font-size:10px;color:var(--text3)">(optionnel)</span></label><input type="date" id="cr-fin"></div>
+    </div>
+    <button class="btn" onclick="ajouterChargeRecurrente()" style="margin-top:14px">+ Ajouter la charge récurrente</button>
+  </div>
+
+  <div class="section-title">Charges récurrentes actives</div>
+  <div id="cr-liste" style="display:flex;flex-direction:column;gap:10px;margin-bottom:24px"></div>
+
+  <div class="section-title">Impact estimé sur l'année en cours</div>
+  <div id="cr-impact-annuel" class="table-wrap" style="padding:18px 22px"></div>
+</div>
+
 <!-- MODAL EDITION -->
 <div class="modal-overlay" id="modal-overlay">
   <div class="modal">
@@ -1589,14 +1625,14 @@ function clearUpload(isEdit){
 function getTabGroups(){
   const paramGroup={id:'parametres',label:'⚙️ Paramètres',tabs:['parametres']};
   if(CTX==='lmnp'){return[
-    {id:'comptabilite',label:'🧾 Comptabilité',tabs:['factures','annuel','saisie']},
+    {id:'comptabilite',label:'🧾 Comptabilité',tabs:['factures','annuel','saisie','charges-recurrentes']},
     {id:'locataires',label:'🏠 Locataires',tabs:['locataires','gestion-locative','rentabilite']},
     {id:'financement',label:'💰 Financement',tabs:['financement']},
     paramGroup
   ];}
   return[
     {id:'construction',label:'🏗️ Construction prévisionnelle',tabs:['synthese','logements','budget','dashboard']},
-    {id:'comptabilite',label:'🧾 Comptabilité',tabs:['factures','annuel','saisie']},
+    {id:'comptabilite',label:'🧾 Comptabilité',tabs:['factures','annuel','saisie','charges-recurrentes']},
     {id:'locataires',label:'🏠 Locataires',tabs:['locataires','gestion-locative','rentabilite']},
     {id:'financement',label:'💰 Financement',tabs:['projection','financement']},
     paramGroup
@@ -1604,7 +1640,7 @@ function getTabGroups(){
 }
 function getTabLabels(){return{
   synthese:'Synthèse',logements:'Par logement',budget:'Budget prévisionnel',dashboard:'📊 Dashboard Prév.',
-  factures:'Factures réelles',annuel:'📅 Par année',saisie:'+ Saisir une facture',
+  factures:'Factures réelles',annuel:'📅 Par année',saisie:'+ Saisir une facture','charges-recurrentes':'🔁 Charges récurrentes',
   locataires:'Fiches & loyers','gestion-locative':'📁 Gestion locative',rentabilite:'📈 Rentabilité',
   projection:'🔭 Projection 20 ans',financement:'💳 Crédit & charges',
   parametres:'⚙️ Paramètres'
@@ -1647,6 +1683,7 @@ function showTab(id){
   if(id==='dashboard')renderDashboard();
   if(id==='factures')renderFactures();
   if(id==='annuel')renderAnnuel();
+  if(id==='charges-recurrentes')renderChargesRecurrentes();
   if(id==='saisie'){
     const numField=document.getElementById('f-num');
     if(numField&&!numField.value) numField.value=getNextFactureNum();
@@ -4279,6 +4316,205 @@ function fmtM(v){return fmt(v);}
 // ═══════════════════════════════════════════════════════════════════════
 // RENTABILITÉ NETTE — Distingue fonctionnement (récurrent) vs travaux (investissement)
 // ═══════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════
+// CHARGES RÉCURRENTES — Assurance, frais bancaires, abonnements...
+// ═══════════════════════════════════════════════════════════════════════
+function loadChargesRecurrentes(){
+  const d=localStorage.getItem(ctxKey('charges_recurrentes'));
+  return d?JSON.parse(d):[];
+}
+function saveChargesRecurrentes(list){
+  localStorage.setItem(ctxKey('charges_recurrentes'),JSON.stringify(list));
+  syncToCloud();
+}
+
+function ajouterChargeRecurrente(){
+  const libelle=document.getElementById('cr-libelle').value.trim();
+  const cat=document.getElementById('cr-cat').value;
+  const log=document.getElementById('cr-log').value;
+  const montant=+document.getElementById('cr-montant').value||0;
+  const frequence=document.getElementById('cr-frequence').value;
+  const debut=document.getElementById('cr-debut').value;
+  const fin=document.getElementById('cr-fin').value;
+
+  if(!libelle){alert('Le libellé est obligatoire.');return;}
+  if(!montant||montant<=0){alert('Le montant doit être supérieur à 0.');return;}
+  if(!debut){alert('La date de début est obligatoire.');return;}
+
+  const list=loadChargesRecurrentes();
+  list.push({
+    id:'cr_'+Date.now(),
+    libelle,cat,log,montant,frequence,debut,fin:fin||null,
+    actif:true
+  });
+  saveChargesRecurrentes(list);
+
+  // Reset formulaire
+  document.getElementById('cr-libelle').value='';
+  document.getElementById('cr-montant').value='';
+  document.getElementById('cr-debut').value='';
+  document.getElementById('cr-fin').value='';
+
+  renderChargesRecurrentes();
+}
+
+function toggleChargeRecurrente(id){
+  const list=loadChargesRecurrentes();
+  const c=list.find(x=>x.id===id);
+  if(c){c.actif=!c.actif;saveChargesRecurrentes(list);renderChargesRecurrentes();}
+}
+
+function supprimerChargeRecurrente(id){
+  if(!confirm('Supprimer définitivement cette charge récurrente ?'))return;
+  let list=loadChargesRecurrentes();
+  list=list.filter(x=>x.id!==id);
+  saveChargesRecurrentes(list);
+  renderChargesRecurrentes();
+}
+
+// Calcule le nombre d'occurrences d'une charge récurrente sur une année donnée
+function getOccurrencesChargeAnnee(charge, annee){
+  const debut=new Date(charge.debut+'T00:00:00');
+  const fin=charge.fin?new Date(charge.fin+'T00:00:00'):null;
+  const debutAnnee=new Date(annee,0,1);
+  const finAnnee=new Date(annee,11,31);
+
+  if(debut>finAnnee)return 0; // pas encore commencé
+  if(fin&&fin<debutAnnee)return 0; // déjà terminé
+
+  const periodeDebut=debut>debutAnnee?debut:debutAnnee;
+  const periodeFin=fin&&fin<finAnnee?fin:finAnnee;
+  if(periodeDebut>periodeFin)return 0;
+
+  const moisDebut=periodeDebut.getFullYear()===annee?periodeDebut.getMonth():0;
+  const moisFin=periodeFin.getFullYear()===annee?periodeFin.getMonth():11;
+  const nbMois=moisFin-moisDebut+1;
+
+  if(charge.frequence==='mensuel')return nbMois;
+  if(charge.frequence==='trimestriel')return Math.ceil(nbMois/3);
+  if(charge.frequence==='annuel'){
+    // Compte 1 occurrence si le mois anniversaire tombe dans la période active de l'année
+    const moisAnniv=debut.getMonth();
+    return(moisAnniv>=moisDebut&&moisAnniv<=moisFin)?1:0;
+  }
+  return 0;
+}
+
+// Montant total d'une charge récurrente pour une année donnée
+function getMontantChargeAnnee(charge, annee){
+  return getOccurrencesChargeAnnee(charge,annee)*charge.montant;
+}
+
+// Total des charges récurrentes par logement pour une année (toutes actives)
+function getChargesRecurrentesByLogYear(annee){
+  const cfg=getCTXConfig();
+  const list=loadChargesRecurrentes().filter(c=>c.actif!==false);
+  const result={};
+  cfg.logements.forEach(lg=>{result[lg.label]=0;});
+  result['Commun']=0;
+  const nbLogs=cfg.logements.length||1;
+
+  list.forEach(c=>{
+    const montantAnnee=getMontantChargeAnnee(c,annee);
+    if(montantAnnee<=0)return;
+    if(c.log==='Commun'){
+      cfg.logements.forEach(lg=>{result[lg.label]=(result[lg.label]||0)+montantAnnee/nbLogs;});
+      result['Commun']=(result['Commun']||0)+montantAnnee;
+    }else if(result[c.log]!==undefined){
+      result[c.log]+=montantAnnee;
+    }
+  });
+  return result;
+}
+
+function renderChargesRecurrentes(){
+  const cfg=getCTXConfig();
+  const list=loadChargesRecurrentes();
+  const nowY=new Date().getFullYear();
+
+  // Remplir les selects
+  const catSel=document.getElementById('cr-cat');
+  if(catSel&&!catSel.children.length){
+    const ogF=document.createElement('optgroup');ogF.label='📋 Fonctionnement';
+    const ogT=document.createElement('optgroup');ogT.label='🔨 Travaux';
+    CATEGORIES.forEach(cat=>{
+      const o=document.createElement('option');o.value=cat.name;o.textContent=cat.name;
+      if(cat.type==='fonctionnement')ogF.appendChild(o);else ogT.appendChild(o);
+    });
+    catSel.appendChild(ogF);catSel.appendChild(ogT);
+    // Sélectionner par défaut la première catégorie fonctionnement
+    const firstFonct=CATEGORIES.find(c=>c.type==='fonctionnement');
+    if(firstFonct)catSel.value=firstFonct.name;
+  }
+  const logSel=document.getElementById('cr-log');
+  if(logSel&&!logSel.children.length){
+    cfg.logements.forEach(lg=>{
+      const o=document.createElement('option');o.value=lg.label||lg.key;o.textContent=lg.label||lg.key;
+      logSel.appendChild(o);
+    });
+    const oCommun=document.createElement('option');oCommun.value='Commun';oCommun.textContent='Commun / Tous les logements';
+    logSel.appendChild(oCommun);
+  }
+
+  // Liste des charges
+  const listeEl=document.getElementById('cr-liste');
+  if(listeEl){
+    if(!list.length){
+      listeEl.innerHTML='<div style="color:var(--text3);font-size:12px;padding:20px;text-align:center;background:rgba(255,255,255,.02);border-radius:12px">Aucune charge récurrente définie. Ajoutez votre assurance, frais bancaires, etc. ci-dessus.</div>';
+    }else{
+      listeEl.innerHTML=list.map(c=>{
+        const catObj=CATEGORIES.find(x=>x.name===c.cat);
+        const freqLabel={mensuel:'Tous les mois',trimestriel:'Tous les trimestres',annuel:'1x/an'}[c.frequence]||c.frequence;
+        const montantAnnuel=getMontantChargeAnnee(c,nowY);
+        return`<div style="display:flex;align-items:center;gap:14px;padding:14px 18px;background:rgba(255,255,255,.03);border:1px solid ${c.actif!==false?(catObj?.color||'#718096')+'33':'var(--border)'};border-radius:12px;opacity:${c.actif!==false?1:.5}">
+          <div style="width:10px;height:10px;border-radius:50%;background:${catObj?.color||'#718096'};flex-shrink:0"></div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600;color:var(--text)">${c.libelle}</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:2px">${c.cat} · ${c.log} · ${freqLabel}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:14px;font-weight:700;color:${catObj?.color||'var(--text2)'}">${fmt(c.montant)}</div>
+            <div style="font-size:10px;color:var(--text3)">soit ${fmt(montantAnnuel)}/an</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="btn btn-sm" onclick="toggleChargeRecurrente('${c.id}')" style="${c.actif!==false?'':'background:rgba(104,211,145,.1);border-color:rgba(104,211,145,.3);color:#68d391'}">
+              ${c.actif!==false?'⏸ Suspendre':'▶ Activer'}
+            </button>
+            <button class="btn btn-sm" onclick="supprimerChargeRecurrente('${c.id}')" style="background:rgba(252,129,129,.08);border-color:rgba(252,129,129,.3);color:#fc8181">🗑</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+  }
+
+  // Impact annuel
+  const impactEl=document.getElementById('cr-impact-annuel');
+  if(impactEl){
+    const byLog=getChargesRecurrentesByLogYear(nowY);
+    const total=Object.values(byLog).reduce((s,v)=>s+v,0)-(byLog['Commun']||0); // éviter double comptage du commun
+    const totalReel=cfg.logements.reduce((s,lg)=>s+(byLog[lg.label]||0),0);
+    impactEl.innerHTML=`
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="border-bottom:2px solid var(--border2)">
+          <th style="text-align:left;padding:8px;color:var(--text3);font-size:10px;text-transform:uppercase">Logement</th>
+          <th style="text-align:right;padding:8px;color:var(--text3);font-size:10px;text-transform:uppercase">Charges récurrentes ${nowY}</th>
+        </tr></thead>
+        <tbody>
+          ${cfg.logements.map(lg=>`<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:8px"><span style="background:${lg.color}22;color:${lg.color};padding:2px 8px;border-radius:6px;font-size:11px">${lg.label}</span></td>
+            <td style="text-align:right;padding:8px;font-weight:600">${fmt(byLog[lg.label]||0)}</td>
+          </tr>`).join('')}
+          <tr style="background:rgba(255,255,255,.04)">
+            <td style="padding:8px;font-weight:700">TOTAL</td>
+            <td style="text-align:right;padding:8px;font-weight:700">${fmt(totalReel)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="font-size:10px;color:var(--text3);margin-top:10px">Ce montant sera automatiquement inclus dans le calcul de rentabilité nette, en complément des factures classiques.</div>`;
+  }
+}
+
+
 function ouvrirRentabiliteNette(){
   const locs=loadLocataires();
   const{factures}=loadData();
@@ -4297,6 +4533,8 @@ function ouvrirRentabiliteNette(){
 
   // Charges fonctionnement réelles (assurance, comptable, gestion, taxes...)
   const fonctionnement=getReelTotalsByYearTyped(factures,annee,'fonctionnement');
+  // Charges récurrentes (assurance/frais bancaires sans facture papier)
+  const recurrentes=getChargesRecurrentesByLogYear(annee);
   // Travaux (investissement — affiché séparément, hors rentabilité courante)
   const travaux=getReelTotalsByYearTyped(factures,annee,'travaux');
 
@@ -4325,21 +4563,24 @@ function ouvrirRentabiliteNette(){
   });
 
   // Calcul par logement
-  let totalLoyers=0,totalFonct=0,totalTravaux=0,totalInterets=0;
+  let totalLoyers=0,totalFonct=0,totalRecur=0,totalTravaux=0,totalInterets=0;
   const rows=logs.map(lg=>{
     const loyers=(ld[lg.key]||{encaisse:0}).encaisse;
     const fonct=fonctionnement[lg.label]||0;
+    const recur=recurrentes[lg.label]||0;
     const trav=travaux[lg.label]||0;
     const interets=interetsParLog[lg.label]||0;
-    const rentabiliteNette=loyers-fonct-interets; // Sans les travaux (investissement, pas charge courante)
+    const chargesTotales=fonct+recur;
+    const rentabiliteNette=loyers-chargesTotales-interets; // Sans les travaux (investissement, pas charge courante)
     const rendementPct=loyers>0?Math.round(rentabiliteNette/loyers*1000)/10:0;
 
-    totalLoyers+=loyers;totalFonct+=fonct;totalTravaux+=trav;totalInterets+=interets;
+    totalLoyers+=loyers;totalFonct+=fonct;totalRecur+=recur;totalTravaux+=trav;totalInterets+=interets;
 
-    return{lg,loyers,fonct,trav,interets,net:rentabiliteNette,rendement:rendementPct};
+    return{lg,loyers,fonct,recur,chargesTotales,trav,interets,net:rentabiliteNette,rendement:rendementPct};
   });
 
-  const totalNet=totalLoyers-totalFonct-totalInterets;
+  const totalChargesTous=totalFonct+totalRecur;
+  const totalNet=totalLoyers-totalChargesTous-totalInterets;
   const totalRendement=totalLoyers>0?Math.round(totalNet/totalLoyers*1000)/10:0;
 
   const html=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
@@ -4377,13 +4618,13 @@ function ouvrirRentabiliteNette(){
     </div>
 
     <div class="info-box">
-      ℹ️ <b>Méthode de calcul :</b> Rentabilité nette = Loyers encaissés − Charges de fonctionnement (assurance, comptable, gestion, taxes, entretien courant) − Intérêts d'emprunt.
+      ℹ️ <b>Méthode de calcul :</b> Rentabilité nette = Loyers encaissés − Charges de fonctionnement (factures) − Charges récurrentes (assurance, frais bancaires sans facture) − Intérêts d'emprunt.
       Les <b>travaux</b> (investissement, amélioration du bien) sont exclus de ce calcul car ils ne représentent pas une charge récurrente d'exploitation — ils sont affichés séparément ci-dessous.
     </div>
 
     <div class="kpi-grid">
       <div class="kpi"><div class="kpi-val" style="color:#2b6cb0">${fmt(totalLoyers)}</div><div class="kpi-label">Loyers encaissés</div></div>
-      <div class="kpi"><div class="kpi-val" style="color:#e53e3e">${fmt(totalFonct)}</div><div class="kpi-label">Charges fonctionnement</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#e53e3e">${fmt(totalChargesTous)}</div><div class="kpi-label">Charges fonctionnement (factures + récurrentes)</div></div>
       <div class="kpi"><div class="kpi-val" style="color:#dd6b20">${fmt(totalInterets)}</div><div class="kpi-label">Intérêts d'emprunt</div></div>
       <div class="kpi"><div class="kpi-val" style="color:${totalNet>=0?'#276749':'#c53030'}">${totalNet>=0?'+':''}${fmt(totalNet)}</div><div class="kpi-label">Rentabilité nette (${totalRendement}%)</div></div>
     </div>
@@ -4394,7 +4635,8 @@ function ouvrirRentabiliteNette(){
       <thead><tr>
         <th>Logement</th>
         <th style="text-align:right">Loyers encaissés</th>
-        <th style="text-align:right">Charges fonctionnement</th>
+        <th style="text-align:right">Charges factures</th>
+        <th style="text-align:right">Charges récurrentes</th>
         <th style="text-align:right">Intérêts emprunt</th>
         <th style="text-align:right">Rentabilité nette</th>
         <th style="text-align:right">Rendement net</th>
@@ -4404,6 +4646,7 @@ function ouvrirRentabiliteNette(){
           <td><span style="background:${r.lg.color}22;color:${r.lg.color};padding:3px 10px;border-radius:6px;font-weight:600">${r.lg.label}</span></td>
           <td style="text-align:right">${fmt(r.loyers)}</td>
           <td style="text-align:right;color:#c53030">− ${fmt(r.fonct)}</td>
+          <td style="text-align:right;color:#dd6b20">− ${fmt(r.recur)}</td>
           <td style="text-align:right;color:#dd6b20">− ${fmt(r.interets)}</td>
           <td style="text-align:right;font-weight:700;color:${r.net>=0?'#276749':'#c53030'}">${r.net>=0?'+':''}${fmt(r.net)}</td>
           <td style="text-align:right;font-weight:700">${r.rendement}%</td>
@@ -4412,6 +4655,7 @@ function ouvrirRentabiliteNette(){
           <td>TOTAL</td>
           <td style="text-align:right">${fmt(totalLoyers)}</td>
           <td style="text-align:right;color:#c53030">− ${fmt(totalFonct)}</td>
+          <td style="text-align:right;color:#dd6b20">− ${fmt(totalRecur)}</td>
           <td style="text-align:right;color:#dd6b20">− ${fmt(totalInterets)}</td>
           <td style="text-align:right;color:${totalNet>=0?'#276749':'#c53030'}">${totalNet>=0?'+':''}${fmt(totalNet)}</td>
           <td style="text-align:right">${totalRendement}%</td>
