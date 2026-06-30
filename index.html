@@ -478,6 +478,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
       <div style="flex:1"></div>
       <button class="btn-export" onclick="ouvrirModalExport()">📤 Exporter loyers...</button>
       <button class="btn-export" onclick="exportComptableAnnuel()" style="background:rgba(183,148,244,.1);border-color:rgba(183,148,244,.4);color:#b794f4">📊 Récap fiscal</button>
+      <button class="btn-export" onclick="ouvrirRentabiliteNette()" style="background:rgba(104,211,145,.1);border-color:rgba(104,211,145,.4);color:#68d391">📈 Rentabilité nette</button>
     </div>
   </div>
 
@@ -1102,26 +1103,42 @@ const LOC_LOGEMENTS=getLogementsActifs();
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CATEGORIES=[
-  {name:"Administratif / Honoraires",color:"#63b3ed"},
-  {name:"Raccordements",color:"#68d391"},
-  {name:"Gros Œuvre / Maçonnerie",color:"#f6ad55"},
-  {name:"Charpente / Couverture / Zinguerie",color:"#b794f4"},
-  {name:"Enduit / Façade",color:"#fc8181"},
-  {name:"Menuiseries extérieures",color:"#4fd1c5"},
-  {name:"Aménagement intérieur",color:"#f687b3"},
-  {name:"Sanitaire — Plomberie",color:"#38bdf8"},
-  {name:"Sanitaire — Salle de bain",color:"#818cf8"},
-  {name:"Sanitaire — WC",color:"#34d399"},
-  {name:"Sanitaire — Chauffage",color:"#fb923c"},
-  {name:"Sanitaire — VMC / Ventilation",color:"#a3e635"},
-  {name:"Aménagement extérieur — Terrassement",color:"#86efac"},
-  {name:"Aménagement extérieur — Clôtures / Portails",color:"#6ee7b7"},
-  {name:"Aménagement extérieur — Voirie / Allées",color:"#a7f3d0"},
-  {name:"Aménagement extérieur — Réseaux enterrés",color:"#5eead4"},
-  {name:"Aménagement extérieur — Espaces verts",color:"#bbf7d0"},
-  {name:"Aménagement extérieur — Divers",color:"#d9f99d"},
-  {name:"Divers / Imprévus",color:"#fbd38d"},
+  // ── TRAVAUX (investissement / construction) ──
+  {name:"Administratif / Honoraires",color:"#63b3ed",type:"travaux"},
+  {name:"Raccordements",color:"#68d391",type:"travaux"},
+  {name:"Gros Œuvre / Maçonnerie",color:"#f6ad55",type:"travaux"},
+  {name:"Charpente / Couverture / Zinguerie",color:"#b794f4",type:"travaux"},
+  {name:"Enduit / Façade",color:"#fc8181",type:"travaux"},
+  {name:"Menuiseries extérieures",color:"#4fd1c5",type:"travaux"},
+  {name:"Aménagement intérieur",color:"#f687b3",type:"travaux"},
+  {name:"Sanitaire — Plomberie",color:"#38bdf8",type:"travaux"},
+  {name:"Sanitaire — Salle de bain",color:"#818cf8",type:"travaux"},
+  {name:"Sanitaire — WC",color:"#34d399",type:"travaux"},
+  {name:"Sanitaire — Chauffage",color:"#fb923c",type:"travaux"},
+  {name:"Sanitaire — VMC / Ventilation",color:"#a3e635",type:"travaux"},
+  {name:"Aménagement extérieur — Terrassement",color:"#86efac",type:"travaux"},
+  {name:"Aménagement extérieur — Clôtures / Portails",color:"#6ee7b7",type:"travaux"},
+  {name:"Aménagement extérieur — Voirie / Allées",color:"#a7f3d0",type:"travaux"},
+  {name:"Aménagement extérieur — Réseaux enterrés",color:"#5eead4",type:"travaux"},
+  {name:"Aménagement extérieur — Espaces verts",color:"#bbf7d0",type:"travaux"},
+  {name:"Aménagement extérieur — Divers",color:"#d9f99d",type:"travaux"},
+  {name:"Divers / Imprévus",color:"#fbd38d",type:"travaux"},
+  // ── FONCTIONNEMENT (charges récurrentes — comptent dans la rentabilité nette) ──
+  {name:"Assurance PNO / GLI",color:"#f56565",type:"fonctionnement"},
+  {name:"Comptable / Expert-comptable",color:"#ed8936",type:"fonctionnement"},
+  {name:"Frais de gestion locative",color:"#ecc94b",type:"fonctionnement"},
+  {name:"Taxe foncière",color:"#48bb78",type:"fonctionnement"},
+  {name:"CFE / Impôts professionnels",color:"#38b2ac",type:"fonctionnement"},
+  {name:"Charges de copropriété",color:"#4299e1",type:"fonctionnement"},
+  {name:"Entretien courant / Petites réparations",color:"#667eea",type:"fonctionnement"},
+  {name:"Eau (abonnement / consommation)",color:"#9f7aea",type:"fonctionnement"},
+  {name:"Électricité (parties communes)",color:"#ed64a6",type:"fonctionnement"},
+  {name:"Frais bancaires",color:"#a0aec0",type:"fonctionnement"},
+  {name:"Frais de gestion divers",color:"#cbd5e0",type:"fonctionnement"},
 ];
+const CAT_TRAVAUX=CATEGORIES.filter(c=>c.type==='travaux').map(c=>c.name);
+const CAT_FONCTIONNEMENT=CATEGORIES.filter(c=>c.type==='fonctionnement').map(c=>c.name);
+function getCatType(name){const c=CATEGORIES.find(x=>x.name===name);return c?c.type:'travaux';}
 const LOGS=[
   {key:"Logement A",prevKey:"A",color:"#63b3ed"},
   {key:"Logement B",prevKey:"B",color:"#68d391"},
@@ -3744,6 +3761,32 @@ function getReelTotalsByYear(factures,year){
   });
   return byLog;
 }
+// Version filtrée par type : 'fonctionnement', 'travaux', ou null (tout)
+function getReelTotalsByYearTyped(factures,year,type){
+  const cfg=getCTXConfig();
+  const byLog={};
+  cfg.logements.forEach(lg=>{byLog[lg.label]={};});
+  byLog['Commun']={};
+  const logKeys=[...cfg.logements.map(l=>l.label),'Commun'];
+  const result={};
+  logKeys.forEach(k=>result[k]=0);
+  const nbLogs=cfg.logements.length||1;
+
+  factures.forEach(f=>{
+    if(f.inclus===false)return;
+    const d=f.date;
+    if(!d||d.slice(0,4)!==String(year))return;
+    if(type&&getCatType(f.cat)!==type)return;
+    const ttc=+f.ttc||0;
+    if(f.log==='Commun'){
+      cfg.logements.forEach(lg=>{result[lg.label]=(result[lg.label]||0)+ttc/nbLogs;});
+      result['Commun']=(result['Commun']||0)+ttc;
+    }else if(result[f.log]!==undefined){
+      result[f.log]+=ttc;
+    }
+  });
+  return result;
+}
 // Charges réelles totales (tous logements + commun), par mois, sur une année
 function getChargesByMonth(factures,year){
   const arr=new Array(12).fill(0);
@@ -4232,6 +4275,194 @@ function renderRentabilite(){
 }
 
 function fmtM(v){return fmt(v);}
+
+// ═══════════════════════════════════════════════════════════════════════
+// RENTABILITÉ NETTE — Distingue fonctionnement (récurrent) vs travaux (investissement)
+// ═══════════════════════════════════════════════════════════════════════
+function ouvrirRentabiliteNette(){
+  const locs=loadLocataires();
+  const{factures}=loadData();
+  const cfg=getCTXConfig();
+  const fc=loadFC();
+  const nowY=new Date().getFullYear();
+
+  const anneeStr=window.prompt('Année à analyser pour la rentabilité nette :',String(nowY));
+  const annee=+anneeStr;
+  if(!annee||annee<2018||annee>nowY+1)return;
+
+  const logs=cfg.logements.filter(l=>l.actif!==false);
+
+  // Revenus locatifs réels (encaissés)
+  const ld=getLoyersByLogementYear(locs,annee);
+
+  // Charges fonctionnement réelles (assurance, comptable, gestion, taxes...)
+  const fonctionnement=getReelTotalsByYearTyped(factures,annee,'fonctionnement');
+  // Travaux (investissement — affiché séparément, hors rentabilité courante)
+  const travaux=getReelTotalsByYearTyped(factures,annee,'travaux');
+
+  // Détail par catégorie de fonctionnement (pour affichage)
+  const factFonctAnnee=factures.filter(f=>f.inclus!==false&&getCatType(f.cat)==='fonctionnement'&&(f.date||'').slice(0,4)===String(annee));
+  const parCatFonct={};
+  factFonctAnnee.forEach(f=>{
+    if(!parCatFonct[f.cat])parCatFonct[f.cat]=0;
+    parCatFonct[f.cat]+=+f.ttc||0;
+  });
+
+  // Intérêts d'emprunt par logement
+  const interetsParLog={};
+  logs.forEach(lg=>{
+    const d=fc[lg.key]||{};
+    interetsParLog[lg.label]=0;
+    if(d.capital&&d.taux&&d.duree){
+      try{
+        const a=computeAmortization(+d.capital,+d.taux,+d.duree,d.tauxType==='variable'?d.tauxOverrides:{});
+        const debutAnnee=d.debut?new Date(d.debut).getFullYear():nowY;
+        const yr=annee-debutAnnee+1;
+        const yearData=a.years&&a.years[yr-1];
+        if(yearData)interetsParLog[lg.label]=(yearData.interets||0)*12;
+      }catch(e){}
+    }
+  });
+
+  // Calcul par logement
+  let totalLoyers=0,totalFonct=0,totalTravaux=0,totalInterets=0;
+  const rows=logs.map(lg=>{
+    const loyers=(ld[lg.key]||{encaisse:0}).encaisse;
+    const fonct=fonctionnement[lg.label]||0;
+    const trav=travaux[lg.label]||0;
+    const interets=interetsParLog[lg.label]||0;
+    const rentabiliteNette=loyers-fonct-interets; // Sans les travaux (investissement, pas charge courante)
+    const rendementPct=loyers>0?Math.round(rentabiliteNette/loyers*1000)/10:0;
+
+    totalLoyers+=loyers;totalFonct+=fonct;totalTravaux+=trav;totalInterets+=interets;
+
+    return{lg,loyers,fonct,trav,interets,net:rentabiliteNette,rendement:rendementPct};
+  });
+
+  const totalNet=totalLoyers-totalFonct-totalInterets;
+  const totalRendement=totalLoyers>0?Math.round(totalNet/totalLoyers*1000)/10:0;
+
+  const html=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+  <title>Rentabilité nette ${annee} — ${cfg.nom}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#1a202c;font-size:12px;padding:18mm 20mm;max-width:297mm;margin:0 auto}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #2b6cb0;padding-bottom:14px;margin-bottom:20px}
+    h1{font-size:20px;font-weight:800;color:#2b6cb0;margin:0 0 4px}
+    .section-title{font-size:13px;font-weight:700;color:#2b6cb0;border-left:4px solid #2b6cb0;padding-left:10px;margin:20px 0 10px;text-transform:uppercase}
+    table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:11px}
+    th{background:#ebf8ff;color:#2b6cb0;padding:7px 10px;text-align:left;font-size:10px;text-transform:uppercase}
+    td{padding:7px 10px;border-bottom:1px solid #e2e8f0}
+    .total-row{font-weight:700;background:#f7fafc}
+    .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+    .kpi{background:#f7fafc;border-radius:8px;padding:12px 16px;border:1px solid #e2e8f0}
+    .kpi-val{font-size:18px;font-weight:700;color:#2b6cb0}
+    .kpi-label{font-size:9px;color:#718096;text-transform:uppercase;margin-top:4px}
+    .info-box{background:#ebf8ff;border:1px solid #bee3f8;border-radius:8px;padding:12px 16px;font-size:10px;color:#2c5282;margin-bottom:16px}
+    .travaux-box{background:#fffaf0;border:1px solid #f6ad55;border-radius:8px;padding:12px 16px;margin-bottom:16px}
+    @media print{@page{size:A4 landscape;margin:12mm}body{padding:0}}
+  </style></head><body>
+
+    <div class="header">
+      <div style="display:flex;align-items:center;gap:12px">
+        <img src="${getLogoB64()}" alt="Logo" style="height:55px;width:auto;object-fit:contain">
+        <div>
+          <h1>${cfg.nom}</h1>
+          <div style="font-size:11px;color:#718096">Rentabilité nette — Exercice ${annee}</div>
+        </div>
+      </div>
+      <div style="text-align:right;font-size:10px;color:#718096">
+        <div>Établi le ${fmtDate(todayStr())}</div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      ℹ️ <b>Méthode de calcul :</b> Rentabilité nette = Loyers encaissés − Charges de fonctionnement (assurance, comptable, gestion, taxes, entretien courant) − Intérêts d'emprunt.
+      Les <b>travaux</b> (investissement, amélioration du bien) sont exclus de ce calcul car ils ne représentent pas une charge récurrente d'exploitation — ils sont affichés séparément ci-dessous.
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-val" style="color:#2b6cb0">${fmt(totalLoyers)}</div><div class="kpi-label">Loyers encaissés</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#e53e3e">${fmt(totalFonct)}</div><div class="kpi-label">Charges fonctionnement</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#dd6b20">${fmt(totalInterets)}</div><div class="kpi-label">Intérêts d'emprunt</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:${totalNet>=0?'#276749':'#c53030'}">${totalNet>=0?'+':''}${fmt(totalNet)}</div><div class="kpi-label">Rentabilité nette (${totalRendement}%)</div></div>
+    </div>
+
+    <!-- Détail par logement -->
+    <div class="section-title">Rentabilité nette par logement</div>
+    <table>
+      <thead><tr>
+        <th>Logement</th>
+        <th style="text-align:right">Loyers encaissés</th>
+        <th style="text-align:right">Charges fonctionnement</th>
+        <th style="text-align:right">Intérêts emprunt</th>
+        <th style="text-align:right">Rentabilité nette</th>
+        <th style="text-align:right">Rendement net</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r=>`<tr>
+          <td><span style="background:${r.lg.color}22;color:${r.lg.color};padding:3px 10px;border-radius:6px;font-weight:600">${r.lg.label}</span></td>
+          <td style="text-align:right">${fmt(r.loyers)}</td>
+          <td style="text-align:right;color:#c53030">− ${fmt(r.fonct)}</td>
+          <td style="text-align:right;color:#dd6b20">− ${fmt(r.interets)}</td>
+          <td style="text-align:right;font-weight:700;color:${r.net>=0?'#276749':'#c53030'}">${r.net>=0?'+':''}${fmt(r.net)}</td>
+          <td style="text-align:right;font-weight:700">${r.rendement}%</td>
+        </tr>`).join('')}
+        <tr class="total-row">
+          <td>TOTAL</td>
+          <td style="text-align:right">${fmt(totalLoyers)}</td>
+          <td style="text-align:right;color:#c53030">− ${fmt(totalFonct)}</td>
+          <td style="text-align:right;color:#dd6b20">− ${fmt(totalInterets)}</td>
+          <td style="text-align:right;color:${totalNet>=0?'#276749':'#c53030'}">${totalNet>=0?'+':''}${fmt(totalNet)}</td>
+          <td style="text-align:right">${totalRendement}%</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Détail des charges de fonctionnement par catégorie -->
+    <div class="section-title">Détail des charges de fonctionnement ${annee}</div>
+    <table>
+      <thead><tr><th>Catégorie</th><th style="text-align:right">Montant TTC</th><th>% du total fonctionnement</th></tr></thead>
+      <tbody>
+        ${Object.entries(parCatFonct).sort((a,b)=>b[1]-a[1]).map(([cat,montant])=>`<tr>
+          <td>${cat}</td>
+          <td style="text-align:right">${fmt(montant)}</td>
+          <td style="color:#718096">${totalFonct>0?Math.round(montant/totalFonct*100):0}%</td>
+        </tr>`).join('')}
+        ${Object.keys(parCatFonct).length===0?`<tr><td colspan="3" style="color:#a0aec0;text-align:center;padding:20px">Aucune charge de fonctionnement enregistrée pour ${annee}.<br>Pensez à catégoriser vos factures d'assurance, comptable, gestion... dans la rubrique "Fonctionnement".</td></tr>`:''}
+        <tr class="total-row"><td>TOTAL FONCTIONNEMENT</td><td style="text-align:right">${fmt(totalFonct)}</td><td></td></tr>
+      </tbody>
+    </table>
+
+    <!-- Travaux — séparés, hors rentabilité courante -->
+    <div class="travaux-box">
+      <div style="font-size:12px;font-weight:700;color:#c05621;margin-bottom:10px">🔨 TRAVAUX ${annee} (investissement — non inclus dans la rentabilité nette)</div>
+      <table style="margin-bottom:0">
+        <thead><tr><th>Logement</th><th style="text-align:right">Montant travaux</th></tr></thead>
+        <tbody>
+          ${rows.map(r=>r.trav>0?`<tr><td>${r.lg.label}</td><td style="text-align:right">${fmt(r.trav)}</td></tr>`:'').join('')}
+          <tr class="total-row"><td>TOTAL TRAVAUX</td><td style="text-align:right">${fmt(totalTravaux)}</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Résultat global avec travaux -->
+    <div class="section-title">Résultat global (avec travaux de l'année)</div>
+    <div style="background:#f7fafc;border-radius:10px;padding:16px;display:grid;grid-template-columns:1fr auto;gap:8px;font-size:12px;max-width:500px">
+      <div>Rentabilité nette (hors travaux)</div><div style="font-weight:600;text-align:right">${totalNet>=0?'+':''}${fmt(totalNet)}</div>
+      <div>− Travaux réalisés en ${annee}</div><div style="font-weight:600;text-align:right">− ${fmt(totalTravaux)}</div>
+      <div style="font-weight:700;color:#2b6cb0;padding-top:8px;border-top:2px solid #bee3f8">= Résultat global ${annee}</div>
+      <div style="font-weight:700;font-size:15px;text-align:right;padding-top:8px;border-top:2px solid #bee3f8;color:${(totalNet-totalTravaux)>=0?'#276749':'#c53030'}">${(totalNet-totalTravaux)>=0?'+':''}${fmt(totalNet-totalTravaux)}</div>
+    </div>
+
+    <div style="font-size:9px;color:#a0aec0;margin-top:20px;padding-top:10px;border-top:1px solid #e2e8f0">
+      Document à titre indicatif. La rentabilité nette exclut les travaux d'investissement pour refléter la performance locative récurrente.
+      Généré le ${fmtDate(todayStr())} par ${cfg.nom}.
+    </div>
+  </body></html>`;
+
+  openPrintOverlay(html,`Rentabilité nette ${annee} — ${cfg.nom}`);
+}
 
 
 
@@ -8305,7 +8536,18 @@ async function renumeroterFactures(){
 function initSelects(){
   [document.getElementById('f-cat'),document.getElementById('e-cat'),document.getElementById('filter-cat'),document.getElementById('sv-cat')].forEach((sel,i)=>{
     if(!sel)return;
-    CATEGORIES.forEach(cat=>{const o=document.createElement('option');o.value=cat.name;o.textContent=cat.name;sel.appendChild(o);});
+    const ogTravaux=document.createElement('optgroup');
+    ogTravaux.label='🔨 Travaux (investissement)';
+    const ogFonct=document.createElement('optgroup');
+    ogFonct.label='📋 Fonctionnement (charges récurrentes)';
+    CATEGORIES.forEach(cat=>{
+      const o=document.createElement('option');
+      o.value=cat.name;o.textContent=cat.name;
+      if(cat.type==='fonctionnement')ogFonct.appendChild(o);
+      else ogTravaux.appendChild(o);
+    });
+    sel.appendChild(ogTravaux);
+    sel.appendChild(ogFonct);
   });
 }
 document.getElementById('badge-date').textContent=new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'});
