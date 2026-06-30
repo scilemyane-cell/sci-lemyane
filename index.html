@@ -901,6 +901,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
   <div style="background:rgba(99,179,237,.08);border:1px solid rgba(99,179,237,.25);border-radius:12px;padding:14px 18px;margin-bottom:20px;font-size:12px;color:var(--text2)">
     ℹ️ Pour les charges sans facture papier (assurance annuelle, frais bancaires mensuels, abonnements...), définissez-les une fois ici. Elles seront automatiquement comptées chaque mois ou chaque année dans le calcul de rentabilité — sans avoir à ressaisir une facture.
   </div>
+  <div style="background:rgba(252,129,129,.08);border:1px solid rgba(252,129,129,.3);border-radius:12px;padding:14px 18px;margin-bottom:20px;font-size:12px;color:#fc8181">
+    ⚠️ <b>Ne jamais saisir ici les mensualités de prêt immobilier.</b> Les intérêts d'emprunt sont calculés automatiquement depuis l'onglet 💰 Financement (à partir du capital, taux et durée du crédit) et apparaissent déjà séparément dans la rentabilité nette. Le capital remboursé n'est jamais une charge déductible. Si vous avez des virements personnels entre associés (rééquilibrage, apport...), utilisez la catégorie <b>"Virement interne / rééquilibrage personnel"</b> ci-dessous — elle est exclue du calcul.
+  </div>
 
   <div class="table-wrap" style="padding:20px 24px;margin-bottom:20px">
     <div class="section-title" style="margin:0 0 14px">+ Ajouter une charge récurrente</div>
@@ -1171,9 +1174,14 @@ const CATEGORIES=[
   {name:"Électricité (parties communes)",color:"#ed64a6",type:"fonctionnement"},
   {name:"Frais bancaires",color:"#a0aec0",type:"fonctionnement"},
   {name:"Frais de gestion divers",color:"#cbd5e0",type:"fonctionnement"},
+  // ── HORS RENTABILITÉ (exclu du calcul — prêts, flux perso, etc.) ──
+  {name:"Mensualité de prêt (capital + intérêts — NE PAS utiliser, voir Financement)",color:"#718096",type:"hors_rentabilite"},
+  {name:"Virement interne / rééquilibrage personnel",color:"#a0aec0",type:"hors_rentabilite"},
+  {name:"Apport personnel / Remboursement associé",color:"#a0aec0",type:"hors_rentabilite"},
 ];
 const CAT_TRAVAUX=CATEGORIES.filter(c=>c.type==='travaux').map(c=>c.name);
 const CAT_FONCTIONNEMENT=CATEGORIES.filter(c=>c.type==='fonctionnement').map(c=>c.name);
+const CAT_HORS_RENTABILITE=CATEGORIES.filter(c=>c.type==='hors_rentabilite').map(c=>c.name);
 function getCatType(name){const c=CATEGORIES.find(x=>x.name===name);return c?c.type:'travaux';}
 const LOGS=[
   {key:"Logement A",prevKey:"A",color:"#63b3ed"},
@@ -4408,12 +4416,35 @@ function getMontantChargeAnnee(charge, annee){
 // Total des charges récurrentes par logement pour une année (toutes actives)
 function getChargesRecurrentesByLogYear(annee){
   const cfg=getCTXConfig();
-  const list=loadChargesRecurrentes().filter(c=>c.actif!==false);
+  // Exclusion stricte : seules les charges de type "fonctionnement" comptent dans la rentabilité.
+  // Les catégories "hors_rentabilite" (prêts, virements perso) sont volontairement ignorées.
+  const list=loadChargesRecurrentes().filter(c=>c.actif!==false&&getCatType(c.cat)==='fonctionnement');
   const result={};
   cfg.logements.forEach(lg=>{result[lg.label]=0;});
   result['Commun']=0;
   const nbLogs=cfg.logements.length||1;
 
+  list.forEach(c=>{
+    const montantAnnee=getMontantChargeAnnee(c,annee);
+    if(montantAnnee<=0)return;
+    if(c.log==='Commun'){
+      cfg.logements.forEach(lg=>{result[lg.label]=(result[lg.label]||0)+montantAnnee/nbLogs;});
+      result['Commun']=(result['Commun']||0)+montantAnnee;
+    }else if(result[c.log]!==undefined){
+      result[c.log]+=montantAnnee;
+    }
+  });
+  return result;
+}
+
+// Total des charges "hors rentabilité" (prêts mal classés, virements perso) — pour affichage/alerte uniquement
+function getChargesHorsRentabiliteByLogYear(annee){
+  const cfg=getCTXConfig();
+  const list=loadChargesRecurrentes().filter(c=>c.actif!==false&&getCatType(c.cat)==='hors_rentabilite');
+  const result={};
+  cfg.logements.forEach(lg=>{result[lg.label]=0;});
+  result['Commun']=0;
+  const nbLogs=cfg.logements.length||1;
   list.forEach(c=>{
     const montantAnnee=getMontantChargeAnnee(c,annee);
     if(montantAnnee<=0)return;
@@ -4435,14 +4466,13 @@ function renderChargesRecurrentes(){
   // Remplir les selects
   const catSel=document.getElementById('cr-cat');
   if(catSel&&!catSel.children.length){
-    const ogF=document.createElement('optgroup');ogF.label='📋 Fonctionnement';
-    const ogT=document.createElement('optgroup');ogT.label='🔨 Travaux';
-    CATEGORIES.forEach(cat=>{
+    const ogF=document.createElement('optgroup');ogF.label='📋 Fonctionnement (compté dans la rentabilité)';
+    const ogH=document.createElement('optgroup');ogH.label='⛔ Hors rentabilité (exclu — virements perso)';
+    CATEGORIES.filter(c=>c.type==='fonctionnement'||c.type==='hors_rentabilite').forEach(cat=>{
       const o=document.createElement('option');o.value=cat.name;o.textContent=cat.name;
-      if(cat.type==='fonctionnement')ogF.appendChild(o);else ogT.appendChild(o);
+      if(cat.type==='fonctionnement')ogF.appendChild(o);else ogH.appendChild(o);
     });
-    catSel.appendChild(ogF);catSel.appendChild(ogT);
-    // Sélectionner par défaut la première catégorie fonctionnement
+    catSel.appendChild(ogF);catSel.appendChild(ogH);
     const firstFonct=CATEGORIES.find(c=>c.type==='fonctionnement');
     if(firstFonct)catSel.value=firstFonct.name;
   }
@@ -4535,6 +4565,8 @@ function ouvrirRentabiliteNette(){
   const fonctionnement=getReelTotalsByYearTyped(factures,annee,'fonctionnement');
   // Charges récurrentes (assurance/frais bancaires sans facture papier)
   const recurrentes=getChargesRecurrentesByLogYear(annee);
+  const horsRentabilite=getChargesHorsRentabiliteByLogYear(annee);
+  const totalHorsRentabilite=Object.entries(horsRentabilite).filter(([k])=>k!=='Commun').reduce((s,[,v])=>s+v,0);
   // Travaux (investissement — affiché séparément, hors rentabilité courante)
   const travaux=getReelTotalsByYearTyped(factures,annee,'travaux');
 
@@ -4621,6 +4653,9 @@ function ouvrirRentabiliteNette(){
       ℹ️ <b>Méthode de calcul :</b> Rentabilité nette = Loyers encaissés − Charges de fonctionnement (factures) − Charges récurrentes (assurance, frais bancaires sans facture) − Intérêts d'emprunt.
       Les <b>travaux</b> (investissement, amélioration du bien) sont exclus de ce calcul car ils ne représentent pas une charge récurrente d'exploitation — ils sont affichés séparément ci-dessous.
     </div>
+    ${totalHorsRentabilite>0?`<div style="background:#fff5f5;border:1px solid #fed7d7;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:11px;color:#c53030">
+      ⛔ <b>${fmt(totalHorsRentabilite)} exclus du calcul</b> (catégorie "Hors rentabilité" — prêts mal classés ou virements personnels). Ce montant n'impacte ni les charges, ni la rentabilité ci-dessous. Vérifiez qu'il s'agit bien de flux qui ne doivent pas être comptés.
+    </div>`:''}
 
     <div class="kpi-grid">
       <div class="kpi"><div class="kpi-val" style="color:#2b6cb0">${fmt(totalLoyers)}</div><div class="kpi-label">Loyers encaissés</div></div>
@@ -8784,14 +8819,18 @@ function initSelects(){
     ogTravaux.label='🔨 Travaux (investissement)';
     const ogFonct=document.createElement('optgroup');
     ogFonct.label='📋 Fonctionnement (charges récurrentes)';
+    const ogHors=document.createElement('optgroup');
+    ogHors.label='⛔ Hors rentabilité (exclu du calcul)';
     CATEGORIES.forEach(cat=>{
       const o=document.createElement('option');
       o.value=cat.name;o.textContent=cat.name;
       if(cat.type==='fonctionnement')ogFonct.appendChild(o);
+      else if(cat.type==='hors_rentabilite')ogHors.appendChild(o);
       else ogTravaux.appendChild(o);
     });
     sel.appendChild(ogTravaux);
     sel.appendChild(ogFonct);
+    sel.appendChild(ogHors);
   });
 }
 document.getElementById('badge-date').textContent=new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'});
