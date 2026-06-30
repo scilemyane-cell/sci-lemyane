@@ -4726,9 +4726,11 @@ function ouvrirRentabiliteNette(){
 
   // Intérêts d'emprunt par logement
   const interetsParLog={};
+  const capitalRemboParLog={};
   logs.forEach(lg=>{
     const d=fc[lg.key]||{};
     interetsParLog[lg.label]=0;
+    capitalRemboParLog[lg.label]=0;
     if(d.capital&&d.taux&&d.duree){
       try{
         const a=computeAmortization(+d.capital,+d.taux,+d.duree,d.tauxType==='variable'?d.tauxOverrides:{});
@@ -4737,31 +4739,39 @@ function ouvrirRentabiliteNette(){
         if(!debutAnnee||debutAnnee<1950||debutAnnee>2100)debutAnnee=nowY;
         const yr=annee-debutAnnee+1;
         const yearData=a.years&&a.years[yr-1];
-        if(yearData)interetsParLog[lg.label]=yearData.interets||0;
+        if(yearData){
+          interetsParLog[lg.label]=yearData.interets||0;
+          capitalRemboParLog[lg.label]=yearData.capital||0;
+        }
       }catch(e){console.warn('Calcul intérêts impossible pour',lg.label,e);}
     }
   });
 
   // Calcul par logement
-  let totalLoyers=0,totalFonct=0,totalRecur=0,totalTravaux=0,totalInterets=0;
+  let totalLoyers=0,totalFonct=0,totalRecur=0,totalTravaux=0,totalInterets=0,totalCapitalRembo=0;
   const rows=logs.map(lg=>{
     const loyers=(ld[lg.key]||{encaisse:0}).encaisse;
     const fonct=fonctionnement[lg.label]||0;
     const recur=recurrentes[lg.label]||0;
     const trav=travaux[lg.label]||0;
     const interets=interetsParLog[lg.label]||0;
+    const capitalRembo=capitalRemboParLog[lg.label]||0;
     const chargesTotales=fonct+recur;
-    const rentabiliteNette=loyers-chargesTotales-interets; // Sans les travaux (investissement, pas charge courante)
+    const rentabiliteNette=loyers-chargesTotales-interets; // Vision comptable/fiscale : capital remboursé exclu (non déductible)
+    const cashflowReel=rentabiliteNette-capitalRembo; // Vision trésorerie : ce qui reste vraiment en poche
     const rendementPct=loyers>0?Math.round(rentabiliteNette/loyers*1000)/10:0;
+    const cashflowPct=loyers>0?Math.round(cashflowReel/loyers*1000)/10:0;
 
-    totalLoyers+=loyers;totalFonct+=fonct;totalRecur+=recur;totalTravaux+=trav;totalInterets+=interets;
+    totalLoyers+=loyers;totalFonct+=fonct;totalRecur+=recur;totalTravaux+=trav;totalInterets+=interets;totalCapitalRembo+=capitalRembo;
 
-    return{lg,loyers,fonct,recur,chargesTotales,trav,interets,net:rentabiliteNette,rendement:rendementPct};
+    return{lg,loyers,fonct,recur,chargesTotales,trav,interets,capitalRembo,net:rentabiliteNette,cashflow:cashflowReel,rendement:rendementPct,cashflowPct};
   });
 
   const totalChargesTous=totalFonct+totalRecur;
   const totalNet=totalLoyers-totalChargesTous-totalInterets;
+  const totalCashflow=totalNet-totalCapitalRembo;
   const totalRendement=totalLoyers>0?Math.round(totalNet/totalLoyers*1000)/10:0;
+  const totalCashflowPct=totalLoyers>0?Math.round(totalCashflow/totalLoyers*1000)/10:0;
 
   const html=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
   <title>Rentabilité nette ${annee} — ${cfg.nom}</title>
@@ -4798,8 +4808,8 @@ function ouvrirRentabiliteNette(){
     </div>
 
     <div class="info-box">
-      ℹ️ <b>Méthode de calcul :</b> Rentabilité nette = Loyers encaissés − Charges de fonctionnement (factures) − Charges récurrentes (assurance, frais bancaires sans facture) − Intérêts d'emprunt.
-      Les <b>travaux</b> (investissement, amélioration du bien) sont exclus de ce calcul car ils ne représentent pas une charge récurrente d'exploitation — ils sont affichés séparément ci-dessous.
+      ℹ️ <b>Deux indicateurs différents :</b> la <b>Rentabilité nette</b> (vision fiscale) exclut le capital remboursé car il n'est pas déductible des impôts — seuls les intérêts le sont. Le <b>Cash-flow réel</b> (vision trésorerie) déduit en plus le capital remboursé chaque mois, car cet argent quitte bien votre compte même s'il ne s'agit pas d'une "charge" comptable : c'est ce qu'il vous reste vraiment en poche.
+      Les <b>travaux</b> (investissement, amélioration du bien) sont exclus des deux calculs — ils sont affichés séparément ci-dessous.
     </div>
     ${totalHorsRentabilite>0?`<div style="background:#fff5f5;border:1px solid #fed7d7;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:11px;color:#c53030">
       ⛔ <b>${fmt(totalHorsRentabilite)} exclus du calcul</b> (catégorie "Hors rentabilité" — prêts mal classés ou virements personnels). Ce montant n'impacte ni les charges, ni la rentabilité ci-dessous. Vérifiez qu'il s'agit bien de flux qui ne doivent pas être comptés.
@@ -4807,9 +4817,22 @@ function ouvrirRentabiliteNette(){
 
     <div class="kpi-grid">
       <div class="kpi"><div class="kpi-val" style="color:#2b6cb0">${fmt(totalLoyers)}</div><div class="kpi-label">Loyers encaissés</div></div>
-      <div class="kpi"><div class="kpi-val" style="color:#e53e3e">${fmt(totalChargesTous)}</div><div class="kpi-label">Charges fonctionnement (factures + récurrentes)</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#e53e3e">${fmt(totalChargesTous)}</div><div class="kpi-label">Charges fonctionnement</div></div>
       <div class="kpi"><div class="kpi-val" style="color:#dd6b20">${fmt(totalInterets)}</div><div class="kpi-label">Intérêts d'emprunt</div></div>
-      <div class="kpi"><div class="kpi-val" style="color:${totalNet>=0?'#276749':'#c53030'}">${totalNet>=0?'+':''}${fmt(totalNet)}</div><div class="kpi-label">Rentabilité nette (${totalRendement}%)</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#9f7aea">${fmt(totalCapitalRembo)}</div><div class="kpi-label">Capital remboursé</div></div>
+    </div>
+
+    <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
+      <div class="kpi" style="background:#ebf8ff;border:2px solid #bee3f8">
+        <div class="kpi-val" style="color:${totalNet>=0?'#276749':'#c53030'};font-size:22px">${totalNet>=0?'+':''}${fmt(totalNet)}</div>
+        <div class="kpi-label">Rentabilité nette fiscale (${totalRendement}%)</div>
+        <div style="font-size:10px;color:#718096;margin-top:4px">Loyers − charges − intérêts (sans le capital remboursé)</div>
+      </div>
+      <div class="kpi" style="background:#faf5ff;border:2px solid #e9d8fd">
+        <div class="kpi-val" style="color:${totalCashflow>=0?'#276749':'#c53030'};font-size:22px">${totalCashflow>=0?'+':''}${fmt(totalCashflow)}</div>
+        <div class="kpi-label">Cash-flow réel (${totalCashflowPct}%)</div>
+        <div style="font-size:10px;color:#718096;margin-top:4px">Ce qu'il vous reste vraiment en poche (capital remboursé inclus)</div>
+      </div>
     </div>
 
     <!-- Détail par logement -->
@@ -4822,7 +4845,8 @@ function ouvrirRentabiliteNette(){
         <th style="text-align:right">Charges récurrentes</th>
         <th style="text-align:right">Intérêts emprunt</th>
         <th style="text-align:right">Rentabilité nette</th>
-        <th style="text-align:right">Rendement net</th>
+        <th style="text-align:right">Capital remboursé</th>
+        <th style="text-align:right">Cash-flow réel</th>
       </tr></thead>
       <tbody>
         ${rows.map(r=>`<tr>
@@ -4832,7 +4856,8 @@ function ouvrirRentabiliteNette(){
           <td style="text-align:right;color:#dd6b20">− ${fmt(r.recur)}</td>
           <td style="text-align:right;color:#dd6b20">− ${fmt(r.interets)}</td>
           <td style="text-align:right;font-weight:700;color:${r.net>=0?'#276749':'#c53030'}">${r.net>=0?'+':''}${fmt(r.net)}</td>
-          <td style="text-align:right;font-weight:700">${r.rendement}%</td>
+          <td style="text-align:right;color:#805ad5">− ${fmt(r.capitalRembo)}</td>
+          <td style="text-align:right;font-weight:700;color:${r.cashflow>=0?'#276749':'#c53030'}">${r.cashflow>=0?'+':''}${fmt(r.cashflow)}</td>
         </tr>`).join('')}
         <tr class="total-row">
           <td>TOTAL</td>
@@ -4841,7 +4866,8 @@ function ouvrirRentabiliteNette(){
           <td style="text-align:right;color:#dd6b20">− ${fmt(totalRecur)}</td>
           <td style="text-align:right;color:#dd6b20">− ${fmt(totalInterets)}</td>
           <td style="text-align:right;color:${totalNet>=0?'#276749':'#c53030'}">${totalNet>=0?'+':''}${fmt(totalNet)}</td>
-          <td style="text-align:right">${totalRendement}%</td>
+          <td style="text-align:right;color:#805ad5">− ${fmt(totalCapitalRembo)}</td>
+          <td style="text-align:right;color:${totalCashflow>=0?'#276749':'#c53030'}">${totalCashflow>=0?'+':''}${fmt(totalCashflow)}</td>
         </tr>
       </tbody>
     </table>
@@ -4874,16 +4900,19 @@ function ouvrirRentabiliteNette(){
     </div>
 
     <!-- Résultat global avec travaux -->
-    <div class="section-title">Résultat global (avec travaux de l'année)</div>
+    <div class="section-title">Résultat global trésorerie (avec travaux de l'année)</div>
     <div style="background:#f7fafc;border-radius:10px;padding:16px;display:grid;grid-template-columns:1fr auto;gap:8px;font-size:12px;max-width:500px">
-      <div>Rentabilité nette (hors travaux)</div><div style="font-weight:600;text-align:right">${totalNet>=0?'+':''}${fmt(totalNet)}</div>
+      <div>Rentabilité nette fiscale</div><div style="font-weight:600;text-align:right">${totalNet>=0?'+':''}${fmt(totalNet)}</div>
+      <div>− Capital remboursé (crédit)</div><div style="font-weight:600;text-align:right">− ${fmt(totalCapitalRembo)}</div>
+      <div style="padding-top:6px;border-top:1px solid #e2e8f0">= Cash-flow réel</div><div style="font-weight:600;text-align:right;padding-top:6px;border-top:1px solid #e2e8f0">${totalCashflow>=0?'+':''}${fmt(totalCashflow)}</div>
       <div>− Travaux réalisés en ${annee}</div><div style="font-weight:600;text-align:right">− ${fmt(totalTravaux)}</div>
-      <div style="font-weight:700;color:#2b6cb0;padding-top:8px;border-top:2px solid #bee3f8">= Résultat global ${annee}</div>
-      <div style="font-weight:700;font-size:15px;text-align:right;padding-top:8px;border-top:2px solid #bee3f8;color:${(totalNet-totalTravaux)>=0?'#276749':'#c53030'}">${(totalNet-totalTravaux)>=0?'+':''}${fmt(totalNet-totalTravaux)}</div>
+      <div style="font-weight:700;color:#2b6cb0;padding-top:8px;border-top:2px solid #bee3f8">= Trésorerie réelle générée ${annee}</div>
+      <div style="font-weight:700;font-size:15px;text-align:right;padding-top:8px;border-top:2px solid #bee3f8;color:${(totalCashflow-totalTravaux)>=0?'#276749':'#c53030'}">${(totalCashflow-totalTravaux)>=0?'+':''}${fmt(totalCashflow-totalTravaux)}</div>
     </div>
 
     <div style="font-size:9px;color:#a0aec0;margin-top:20px;padding-top:10px;border-top:1px solid #e2e8f0">
-      Document à titre indicatif. La rentabilité nette exclut les travaux d'investissement pour refléter la performance locative récurrente.
+      Document à titre indicatif. La rentabilité nette fiscale exclut le capital remboursé (non déductible) et les travaux d'investissement.
+      Le cash-flow réel et la trésorerie générée incluent le capital remboursé, pour refléter ce qui reste vraiment disponible.
       Généré le ${fmtDate(todayStr())} par ${cfg.nom}.
     </div>
   </body></html>`;
