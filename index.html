@@ -333,6 +333,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
     <button id="switch-btn-sci" onclick="switchContexte('sci')" style="padding:6px 14px;border-radius:7px;border:none;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;background:transparent;color:var(--text3)">🏗 SCI Lémyane</button>
     <button id="switch-btn-lmnp" onclick="switchContexte('lmnp')" style="padding:6px 14px;border-radius:7px;border:none;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;background:transparent;color:var(--text3)">🏠 LMNP</button>
   </div>
+  <button id="btn-patrimoine-global" onclick="ouvrirVuePatrimoineGlobale()" style="padding:8px 16px;border-radius:10px;border:1px solid rgba(183,148,244,.35);background:rgba(183,148,244,.1);color:#b794f4;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;margin:0 8px 0 0;flex-shrink:0;display:flex;align-items:center;gap:6px" title="Vue consolidée de tout le patrimoine">🏛️ Patrimoine</button>
   <div class="header-right" style="align-items:center">
     <div class="badge" id="badge-date"></div>
     <div class="badge" id="sync-status" style="color:#63b3ed;cursor:pointer" onclick="loadFromCloud().then(()=>location.reload())" title="Cliquer pour forcer la synchronisation">☁ Cloud</div>
@@ -958,49 +959,61 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
   <div id="cr-impact-annuel" class="table-wrap" style="padding:18px 22px"></div>
 </div>
 
-<!-- PATRIMOINE — Vue consolidée -->
-<div class="content" id="tab-patrimoine">
-  <div class="section-title">🏛️ Patrimoine — Vue consolidée</div>
-  <div style="background:rgba(99,179,237,.08);border:1px solid rgba(99,179,237,.25);border-radius:12px;padding:14px 18px;margin-bottom:20px;font-size:12px;color:var(--text2)">
-    ℹ️ Cette vue regroupe automatiquement tous les logements SCI Lémyane et LMNP Barreteau (avec leurs crédits déjà saisis dans Financement), ainsi que vos biens personnels ajoutés manuellement (résidence principale, nue-propriété...).
-  </div>
-
-  <div class="kpi-grid" id="patr-kpi-grid" style="margin-bottom:24px"></div>
-
-  <div class="table-wrap" style="padding:20px 24px;margin-bottom:24px">
-    <div class="section-title" style="margin:0 0 14px">+ Ajouter un bien personnel</div>
-    <div class="form-grid">
-      <div class="form-group"><label>Nom du bien</label><input type="text" id="pb-nom" placeholder="ex: Résidence principale, Maison Soullans..."></div>
-      <div class="form-group"><label>Type</label>
-        <select id="pb-type">
-          <option value="RP">Résidence principale</option>
-          <option value="nue-propriete">Nue-propriété</option>
-          <option value="locatif-nu">Locatif autre (nu, hors SCI/LMNP)</option>
-          <option value="autre">Autre</option>
-        </select>
+<!-- PATRIMOINE — Vue consolidée, overlay plein écran indépendant du switch SCI/LMNP -->
+<div id="overlay-patrimoine" style="display:none;position:fixed;inset:0;background:var(--bg1);z-index:1500;overflow-y:auto">
+  <div style="position:sticky;top:0;z-index:10;background:var(--bg2);border-bottom:1px solid var(--border2);padding:16px 24px;display:flex;justify-content:space-between;align-items:center">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="width:40px;height:40px;border-radius:10px;background:rgba(183,148,244,.15);display:flex;align-items:center;justify-content:center;font-size:20px">🏛️</div>
+      <div>
+        <div style="font-size:16px;font-weight:700;color:var(--text)">Patrimoine — Vue consolidée</div>
+        <div style="font-size:11px;color:var(--text3)">Indépendant du contexte SCI / LMNP</div>
       </div>
-      <div class="form-group"><label>Adresse</label><input type="text" id="pb-adresse" placeholder="Adresse du bien"></div>
-      <div class="form-group"><label>Prix d'achat (€)</label><input type="number" id="pb-prixachat" step="100"></div>
-      <div class="form-group"><label>Travaux réalisés (€) <span style="font-size:10px;color:var(--text3)">(optionnel)</span></label><input type="number" id="pb-travaux" step="100"></div>
-      <div class="form-group"><label>Frais d'acquisition (€) <span style="font-size:10px;color:var(--text3)">(notaire, agence...)</span></label><input type="number" id="pb-frais" step="100"></div>
-      <div class="form-group"><label>Valeur de marché estimée (€)</label><input type="number" id="pb-valeurmarche" step="1000"></div>
-      <div class="form-group"><label>Date d'acquisition</label><input type="date" id="pb-dateacq"></div>
     </div>
-    <div style="font-size:11px;font-weight:700;color:var(--text2);margin:16px 0 10px">Crédit associé (optionnel)</div>
-    <div class="form-grid">
-      <div class="form-group"><label>Capital emprunté (€)</label><input type="number" id="pb-capital" step="100"></div>
-      <div class="form-group"><label>Taux initial (%)</label><input type="number" id="pb-taux" step="0.01"></div>
-      <div class="form-group"><label>Durée (années)</label><input type="number" id="pb-duree" step="1"></div>
-      <div class="form-group"><label>Date de début du crédit</label><input type="date" id="pb-debutcredit"></div>
-    </div>
-    <button class="btn" onclick="ajouterBienPatrimoine()" style="margin-top:14px">+ Ajouter le bien</button>
+    <button onclick="fermerVuePatrimoineGlobale()" style="background:rgba(255,255,255,.06);border:1px solid var(--border2);color:var(--text2);width:36px;height:36px;border-radius:10px;cursor:pointer;font-size:18px">×</button>
   </div>
 
-  <div class="section-title">Tous les biens</div>
-  <div id="patr-biens-liste" style="display:flex;flex-direction:column;gap:12px;margin-bottom:24px"></div>
+  <div style="max-width:1100px;margin:0 auto;padding:24px">
+    <div style="background:rgba(99,179,237,.08);border:1px solid rgba(99,179,237,.25);border-radius:12px;padding:14px 18px;margin-bottom:20px;font-size:12px;color:var(--text2)">
+      ℹ️ Cette vue regroupe automatiquement tous les logements SCI Lémyane et LMNP Barreteau (avec leurs crédits déjà saisis dans Financement), ainsi que vos biens personnels ajoutés manuellement (résidence principale, nue-propriété...). Pensé pour évoluer si une holding regroupe un jour ces structures.
+    </div>
 
-  <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
-    <button class="btn-export" onclick="exporterPatrimoinePDF()" style="background:rgba(104,211,145,.1);border-color:rgba(104,211,145,.4);color:#68d391">📄 Export PDF du patrimoine</button>
+    <div class="kpi-grid" id="patr-kpi-grid" style="margin-bottom:24px"></div>
+
+    <div class="table-wrap" style="padding:20px 24px;margin-bottom:24px">
+      <div class="section-title" style="margin:0 0 14px">+ Ajouter un bien personnel</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Nom du bien</label><input type="text" id="pb-nom" placeholder="ex: Résidence principale, Maison Soullans..."></div>
+        <div class="form-group"><label>Type</label>
+          <select id="pb-type">
+            <option value="RP">Résidence principale</option>
+            <option value="nue-propriete">Nue-propriété</option>
+            <option value="locatif-nu">Locatif autre (nu, hors SCI/LMNP)</option>
+            <option value="autre">Autre</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Adresse</label><input type="text" id="pb-adresse" placeholder="Adresse du bien"></div>
+        <div class="form-group"><label>Prix d'achat (€)</label><input type="number" id="pb-prixachat" step="100"></div>
+        <div class="form-group"><label>Travaux réalisés (€) <span style="font-size:10px;color:var(--text3)">(optionnel)</span></label><input type="number" id="pb-travaux" step="100"></div>
+        <div class="form-group"><label>Frais d'acquisition (€) <span style="font-size:10px;color:var(--text3)">(notaire, agence...)</span></label><input type="number" id="pb-frais" step="100"></div>
+        <div class="form-group"><label>Valeur de marché estimée (€)</label><input type="number" id="pb-valeurmarche" step="1000"></div>
+        <div class="form-group"><label>Date d'acquisition</label><input type="date" id="pb-dateacq"></div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:var(--text2);margin:16px 0 10px">Crédit associé (optionnel)</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Capital emprunté (€)</label><input type="number" id="pb-capital" step="100"></div>
+        <div class="form-group"><label>Taux initial (%)</label><input type="number" id="pb-taux" step="0.01"></div>
+        <div class="form-group"><label>Durée (années)</label><input type="number" id="pb-duree" step="1"></div>
+        <div class="form-group"><label>Date de début du crédit</label><input type="date" id="pb-debutcredit"></div>
+      </div>
+      <button class="btn" onclick="ajouterBienPatrimoine()" style="margin-top:14px">+ Ajouter le bien</button>
+    </div>
+
+    <div class="section-title">Tous les biens</div>
+    <div id="patr-biens-liste" style="display:flex;flex-direction:column;gap:12px;margin-bottom:24px"></div>
+
+    <div style="display:flex;justify-content:flex-end;margin-bottom:24px">
+      <button class="btn-export" onclick="exporterPatrimoinePDF()" style="background:rgba(104,211,145,.1);border-color:rgba(104,211,145,.4);color:#68d391">📄 Export PDF du patrimoine</button>
+    </div>
   </div>
 </div>
 
@@ -1702,12 +1715,10 @@ function clearUpload(isEdit){
 // ── NAVIGATION (groupes + sous-onglets) ────────────────────────────────────
 function getTabGroups(){
   const paramGroup={id:'parametres',label:'⚙️ Paramètres',tabs:['parametres']};
-  const patrimoineGroup={id:'patrimoine',label:'🏛️ Patrimoine',tabs:['patrimoine']};
   if(CTX==='lmnp'){return[
     {id:'comptabilite',label:'🧾 Comptabilité',tabs:['factures','annuel','saisie','charges-recurrentes']},
     {id:'locataires',label:'🏠 Locataires',tabs:['locataires','gestion-locative','rentabilite']},
     {id:'financement',label:'💰 Financement',tabs:['financement']},
-    patrimoineGroup,
     paramGroup
   ];}
   return[
@@ -1715,7 +1726,6 @@ function getTabGroups(){
     {id:'comptabilite',label:'🧾 Comptabilité',tabs:['factures','annuel','saisie','charges-recurrentes']},
     {id:'locataires',label:'🏠 Locataires',tabs:['locataires','gestion-locative','rentabilite']},
     {id:'financement',label:'💰 Financement',tabs:['projection','financement']},
-    patrimoineGroup,
     paramGroup
   ];
 }
@@ -1724,7 +1734,6 @@ function getTabLabels(){return{
   factures:'Factures réelles',annuel:'📅 Par année',saisie:'+ Saisir une facture','charges-recurrentes':'🔁 Charges récurrentes',
   locataires:'Fiches & loyers','gestion-locative':'📁 Gestion locative',rentabilite:'📈 Rentabilité',
   projection:'🔭 Projection 20 ans',financement:'💳 Crédit & charges',
-  patrimoine:'Vue consolidée',
   parametres:'⚙️ Paramètres'
 };}
 const TAB_GROUPS=getTabGroups();
@@ -1766,7 +1775,6 @@ function showTab(id){
   if(id==='factures')renderFactures();
   if(id==='annuel')renderAnnuel();
   if(id==='charges-recurrentes')renderChargesRecurrentes();
-  if(id==='patrimoine')renderPatrimoine();
   if(id==='saisie'){
     const numField=document.getElementById('f-num');
     if(numField&&!numField.value) numField.value=getNextFactureNum();
@@ -4966,6 +4974,16 @@ function getBiensManuelsCalcules(){
       isAuto:false
     };
   });
+}
+
+function ouvrirVuePatrimoineGlobale(){
+  document.getElementById('overlay-patrimoine').style.display='block';
+  document.body.style.overflow='hidden';
+  renderPatrimoine();
+}
+function fermerVuePatrimoineGlobale(){
+  document.getElementById('overlay-patrimoine').style.display='none';
+  document.body.style.overflow='';
 }
 
 function renderPatrimoine(){
