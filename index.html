@@ -958,6 +958,52 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
   <div id="cr-impact-annuel" class="table-wrap" style="padding:18px 22px"></div>
 </div>
 
+<!-- PATRIMOINE — Vue consolidée -->
+<div class="content" id="tab-patrimoine">
+  <div class="section-title">🏛️ Patrimoine — Vue consolidée</div>
+  <div style="background:rgba(99,179,237,.08);border:1px solid rgba(99,179,237,.25);border-radius:12px;padding:14px 18px;margin-bottom:20px;font-size:12px;color:var(--text2)">
+    ℹ️ Cette vue regroupe automatiquement tous les logements SCI Lémyane et LMNP Barreteau (avec leurs crédits déjà saisis dans Financement), ainsi que vos biens personnels ajoutés manuellement (résidence principale, nue-propriété...).
+  </div>
+
+  <div class="kpi-grid" id="patr-kpi-grid" style="margin-bottom:24px"></div>
+
+  <div class="table-wrap" style="padding:20px 24px;margin-bottom:24px">
+    <div class="section-title" style="margin:0 0 14px">+ Ajouter un bien personnel</div>
+    <div class="form-grid">
+      <div class="form-group"><label>Nom du bien</label><input type="text" id="pb-nom" placeholder="ex: Résidence principale, Maison Soullans..."></div>
+      <div class="form-group"><label>Type</label>
+        <select id="pb-type">
+          <option value="RP">Résidence principale</option>
+          <option value="nue-propriete">Nue-propriété</option>
+          <option value="locatif-nu">Locatif autre (nu, hors SCI/LMNP)</option>
+          <option value="autre">Autre</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Adresse</label><input type="text" id="pb-adresse" placeholder="Adresse du bien"></div>
+      <div class="form-group"><label>Prix d'achat (€)</label><input type="number" id="pb-prixachat" step="100"></div>
+      <div class="form-group"><label>Travaux réalisés (€) <span style="font-size:10px;color:var(--text3)">(optionnel)</span></label><input type="number" id="pb-travaux" step="100"></div>
+      <div class="form-group"><label>Frais d'acquisition (€) <span style="font-size:10px;color:var(--text3)">(notaire, agence...)</span></label><input type="number" id="pb-frais" step="100"></div>
+      <div class="form-group"><label>Valeur de marché estimée (€)</label><input type="number" id="pb-valeurmarche" step="1000"></div>
+      <div class="form-group"><label>Date d'acquisition</label><input type="date" id="pb-dateacq"></div>
+    </div>
+    <div style="font-size:11px;font-weight:700;color:var(--text2);margin:16px 0 10px">Crédit associé (optionnel)</div>
+    <div class="form-grid">
+      <div class="form-group"><label>Capital emprunté (€)</label><input type="number" id="pb-capital" step="100"></div>
+      <div class="form-group"><label>Taux initial (%)</label><input type="number" id="pb-taux" step="0.01"></div>
+      <div class="form-group"><label>Durée (années)</label><input type="number" id="pb-duree" step="1"></div>
+      <div class="form-group"><label>Date de début du crédit</label><input type="date" id="pb-debutcredit"></div>
+    </div>
+    <button class="btn" onclick="ajouterBienPatrimoine()" style="margin-top:14px">+ Ajouter le bien</button>
+  </div>
+
+  <div class="section-title">Tous les biens</div>
+  <div id="patr-biens-liste" style="display:flex;flex-direction:column;gap:12px;margin-bottom:24px"></div>
+
+  <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+    <button class="btn-export" onclick="exporterPatrimoinePDF()" style="background:rgba(104,211,145,.1);border-color:rgba(104,211,145,.4);color:#68d391">📄 Export PDF du patrimoine</button>
+  </div>
+</div>
+
 <!-- MODAL EDITION -->
 <div class="modal-overlay" id="modal-overlay">
   <div class="modal">
@@ -1656,10 +1702,12 @@ function clearUpload(isEdit){
 // ── NAVIGATION (groupes + sous-onglets) ────────────────────────────────────
 function getTabGroups(){
   const paramGroup={id:'parametres',label:'⚙️ Paramètres',tabs:['parametres']};
+  const patrimoineGroup={id:'patrimoine',label:'🏛️ Patrimoine',tabs:['patrimoine']};
   if(CTX==='lmnp'){return[
     {id:'comptabilite',label:'🧾 Comptabilité',tabs:['factures','annuel','saisie','charges-recurrentes']},
     {id:'locataires',label:'🏠 Locataires',tabs:['locataires','gestion-locative','rentabilite']},
     {id:'financement',label:'💰 Financement',tabs:['financement']},
+    patrimoineGroup,
     paramGroup
   ];}
   return[
@@ -1667,6 +1715,7 @@ function getTabGroups(){
     {id:'comptabilite',label:'🧾 Comptabilité',tabs:['factures','annuel','saisie','charges-recurrentes']},
     {id:'locataires',label:'🏠 Locataires',tabs:['locataires','gestion-locative','rentabilite']},
     {id:'financement',label:'💰 Financement',tabs:['projection','financement']},
+    patrimoineGroup,
     paramGroup
   ];
 }
@@ -1675,6 +1724,7 @@ function getTabLabels(){return{
   factures:'Factures réelles',annuel:'📅 Par année',saisie:'+ Saisir une facture','charges-recurrentes':'🔁 Charges récurrentes',
   locataires:'Fiches & loyers','gestion-locative':'📁 Gestion locative',rentabilite:'📈 Rentabilité',
   projection:'🔭 Projection 20 ans',financement:'💳 Crédit & charges',
+  patrimoine:'Vue consolidée',
   parametres:'⚙️ Paramètres'
 };}
 const TAB_GROUPS=getTabGroups();
@@ -1716,6 +1766,7 @@ function showTab(id){
   if(id==='factures')renderFactures();
   if(id==='annuel')renderAnnuel();
   if(id==='charges-recurrentes')renderChargesRecurrentes();
+  if(id==='patrimoine')renderPatrimoine();
   if(id==='saisie'){
     const numField=document.getElementById('f-num');
     if(numField&&!numField.value) numField.value=getNextFactureNum();
@@ -2902,6 +2953,11 @@ async function syncToCloud(){
       budget,factures,fin,locataires,logements,projection,fc:fcData,glDocs,
       updated:new Date().toISOString()
     });
+    // Sync séparée des biens patrimoine — communs aux deux contextes, document indépendant
+    const biensPatrimoine=loadBiensPatrimoine();
+    await window._setDoc(window._doc(window._db,'patrimoine','data'),{
+      biensPatrimoine,updated:new Date().toISOString()
+    });
     if(syncEl){syncEl.textContent='✓ Sauvegardé';syncEl.style.color='#68d391';
       setTimeout(()=>{syncEl.textContent='☁ Cloud';syncEl.style.color='#63b3ed';},2000);}
   }catch(e){
@@ -2915,16 +2971,25 @@ async function loadFromCloud(){
   if(!window._db)return;
   try{
     const snap=await window._getDoc(window._doc(window._db,CTX,'data'));
-    if(!snap.exists())return;
-    const d=snap.data();
-    if(d.budget)localStorage.setItem(ctxKey('budget3'),JSON.stringify(d.budget));
-    if(d.factures)localStorage.setItem(ctxKey('factures3'),JSON.stringify(d.factures));
-    if(d.fin)localStorage.setItem(ctxKey('fin4'),JSON.stringify(d.fin));
-    if(d.locataires)localStorage.setItem(ctxKey('locataires'),JSON.stringify(d.locataires));
-    if(d.logements)localStorage.setItem(ctxKey('logements_config'),JSON.stringify(d.logements));
-    if(d.projection)localStorage.setItem(ctxKey('projection'),JSON.stringify(d.projection));
-    if(d.fc)localStorage.setItem(ctxKey('fc'),JSON.stringify(d.fc));
-    if(d.glDocs)localStorage.setItem(ctxKey('gl_docs'),JSON.stringify(d.glDocs));
+    if(snap.exists()){
+      const d=snap.data();
+      if(d.budget)localStorage.setItem(ctxKey('budget3'),JSON.stringify(d.budget));
+      if(d.factures)localStorage.setItem(ctxKey('factures3'),JSON.stringify(d.factures));
+      if(d.fin)localStorage.setItem(ctxKey('fin4'),JSON.stringify(d.fin));
+      if(d.locataires)localStorage.setItem(ctxKey('locataires'),JSON.stringify(d.locataires));
+      if(d.logements)localStorage.setItem(ctxKey('logements_config'),JSON.stringify(d.logements));
+      if(d.projection)localStorage.setItem(ctxKey('projection'),JSON.stringify(d.projection));
+      if(d.fc)localStorage.setItem(ctxKey('fc'),JSON.stringify(d.fc));
+      if(d.glDocs)localStorage.setItem(ctxKey('gl_docs'),JSON.stringify(d.glDocs));
+    }
+    // Charger aussi les biens patrimoine (document séparé, indépendant du contexte)
+    try{
+      const snapPatr=await window._getDoc(window._doc(window._db,'patrimoine','data'));
+      if(snapPatr.exists()){
+        const dp=snapPatr.data();
+        if(dp.biensPatrimoine)localStorage.setItem('patrimoine_biens_manuels',JSON.stringify(dp.biensPatrimoine));
+      }
+    }catch(e){console.warn('Chargement patrimoine cloud échoué',e);}
     console.log('Données chargées depuis le cloud (logements inclus)');
   }catch(e){console.error('Load from cloud error:',e);}
 }
@@ -4715,6 +4780,360 @@ function renderChargesRecurrentes(){
 }
 
 
+// ═══════════════════════════════════════════════════════════════════════
+// PATRIMOINE — Vue consolidée SCI + LMNP + biens personnels
+// ═══════════════════════════════════════════════════════════════════════
+// Stockage global, indépendant du contexte CTX (ni 'sci_' ni 'lmnp_' en préfixe)
+function loadBiensPatrimoine(){
+  const d=localStorage.getItem('patrimoine_biens_manuels');
+  return d?JSON.parse(d):[];
+}
+function saveBiensPatrimoine(list){
+  localStorage.setItem('patrimoine_biens_manuels',JSON.stringify(list));
+  syncToCloud();
+}
+
+function ajouterBienPatrimoine(){
+  const nom=document.getElementById('pb-nom').value.trim();
+  const type=document.getElementById('pb-type').value;
+  const adresse=document.getElementById('pb-adresse').value.trim();
+  const prixAchat=+document.getElementById('pb-prixachat').value||0;
+  const travaux=+document.getElementById('pb-travaux').value||0;
+  const frais=+document.getElementById('pb-frais').value||0;
+  const valeurMarche=+document.getElementById('pb-valeurmarche').value||0;
+  const dateAcq=document.getElementById('pb-dateacq').value;
+  const capital=+document.getElementById('pb-capital').value||0;
+  const taux=+document.getElementById('pb-taux').value||0;
+  const duree=+document.getElementById('pb-duree').value||0;
+  const debutCredit=document.getElementById('pb-debutcredit').value;
+
+  if(!nom){alert('Le nom du bien est obligatoire.');return;}
+  if(!prixAchat||prixAchat<=0){alert('Le prix d\'achat doit être renseigné.');return;}
+
+  const list=loadBiensPatrimoine();
+  list.push({
+    id:'pb_'+Date.now(),
+    nom,type,adresse,prixAchat,travaux,frais,valeurMarche,dateAcq,
+    capital,taux,duree,debutCredit,
+    actif:true
+  });
+  saveBiensPatrimoine(list);
+
+  ['pb-nom','pb-adresse','pb-prixachat','pb-travaux','pb-frais','pb-valeurmarche','pb-dateacq','pb-capital','pb-taux','pb-duree','pb-debutcredit'].forEach(id=>{
+    const el=document.getElementById(id);if(el)el.value='';
+  });
+
+  renderPatrimoine();
+}
+
+function supprimerBienPatrimoine(id){
+  if(!confirm('Supprimer définitivement ce bien du patrimoine ?'))return;
+  let list=loadBiensPatrimoine();
+  list=list.filter(x=>x.id!==id);
+  saveBiensPatrimoine(list);
+  renderPatrimoine();
+}
+
+function ouvrirModalEditBienPatrimoine(id){
+  const list=loadBiensPatrimoine();
+  const b=list.find(x=>x.id===id);
+  if(!b)return;
+
+  let modal=document.getElementById('modal-edit-bien');
+  if(modal)modal.remove();
+  modal=document.createElement('div');
+  modal.id='modal-edit-bien';
+  modal.style.cssText='display:flex;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2000;align-items:center;justify-content:center;padding:20px 0';
+
+  modal.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:18px;padding:28px;width:560px;max-width:94vw;max-height:90vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <h2 style="margin:0;font-size:16px">✏ Modifier le bien</h2>
+        <button onclick="document.getElementById('modal-edit-bien').remove()" style="background:none;border:none;color:var(--text3);font-size:22px;cursor:pointer">×</button>
+      </div>
+      <div class="form-grid">
+        <div class="form-group"><label>Nom du bien</label><input type="text" id="eb-nom" value="${(b.nom||'').replace(/"/g,'&quot;')}"></div>
+        <div class="form-group"><label>Type</label>
+          <select id="eb-type">
+            <option value="RP" ${b.type==='RP'?'selected':''}>Résidence principale</option>
+            <option value="nue-propriete" ${b.type==='nue-propriete'?'selected':''}>Nue-propriété</option>
+            <option value="locatif-nu" ${b.type==='locatif-nu'?'selected':''}>Locatif autre (nu, hors SCI/LMNP)</option>
+            <option value="autre" ${b.type==='autre'?'selected':''}>Autre</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Adresse</label><input type="text" id="eb-adresse" value="${(b.adresse||'').replace(/"/g,'&quot;')}"></div>
+        <div class="form-group"><label>Prix d'achat (€)</label><input type="number" id="eb-prixachat" step="100" value="${b.prixAchat||0}"></div>
+        <div class="form-group"><label>Travaux réalisés (€)</label><input type="number" id="eb-travaux" step="100" value="${b.travaux||0}"></div>
+        <div class="form-group"><label>Frais d'acquisition (€)</label><input type="number" id="eb-frais" step="100" value="${b.frais||0}"></div>
+        <div class="form-group"><label>Valeur de marché estimée (€)</label><input type="number" id="eb-valeurmarche" step="1000" value="${b.valeurMarche||0}"></div>
+        <div class="form-group"><label>Date d'acquisition</label><input type="date" id="eb-dateacq" value="${b.dateAcq||''}"></div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:var(--text2);margin:16px 0 10px">Crédit associé</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Capital emprunté (€)</label><input type="number" id="eb-capital" step="100" value="${b.capital||0}"></div>
+        <div class="form-group"><label>Taux initial (%)</label><input type="number" id="eb-taux" step="0.01" value="${b.taux||0}"></div>
+        <div class="form-group"><label>Durée (années)</label><input type="number" id="eb-duree" step="1" value="${b.duree||0}"></div>
+        <div class="form-group"><label>Date de début du crédit</label><input type="date" id="eb-debutcredit" value="${b.debutCredit||''}"></div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
+        <button class="btn btn-sm" onclick="document.getElementById('modal-edit-bien').remove()" style="background:var(--bg3);border-color:var(--border)">Annuler</button>
+        <button class="btn btn-sm" onclick="validerEditBienPatrimoine('${id}')" style="background:var(--accent);color:#0a0e1a;border-color:var(--accent);font-weight:700">✓ Enregistrer</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+  document.body.appendChild(modal);
+}
+
+function validerEditBienPatrimoine(id){
+  const list=loadBiensPatrimoine();
+  const b=list.find(x=>x.id===id);
+  if(!b)return;
+  const nom=document.getElementById('eb-nom').value.trim();
+  if(!nom){alert('Le nom est obligatoire.');return;}
+  b.nom=nom;
+  b.type=document.getElementById('eb-type').value;
+  b.adresse=document.getElementById('eb-adresse').value.trim();
+  b.prixAchat=+document.getElementById('eb-prixachat').value||0;
+  b.travaux=+document.getElementById('eb-travaux').value||0;
+  b.frais=+document.getElementById('eb-frais').value||0;
+  b.valeurMarche=+document.getElementById('eb-valeurmarche').value||0;
+  b.dateAcq=document.getElementById('eb-dateacq').value;
+  b.capital=+document.getElementById('eb-capital').value||0;
+  b.taux=+document.getElementById('eb-taux').value||0;
+  b.duree=+document.getElementById('eb-duree').value||0;
+  b.debutCredit=document.getElementById('eb-debutcredit').value;
+  saveBiensPatrimoine(list);
+  document.getElementById('modal-edit-bien')?.remove();
+  renderPatrimoine();
+}
+
+// Calcule le capital restant dû à aujourd'hui pour un crédit donné
+function getCapitalRestantDu(capital, taux, duree, debutCredit){
+  if(!capital||!taux||!duree||!debutCredit)return capital||0;
+  try{
+    const a=computeAmortization(+capital,+taux,+duree,{});
+    const debutAnnee=new Date(debutCredit).getFullYear();
+    const nowY=new Date().getFullYear();
+    let anneeCourante=nowY-debutAnnee+1;
+    if(anneeCourante<1)return capital; // crédit pas encore démarré
+    if(anneeCourante>duree)return 0; // crédit terminé
+    const yearData=a.years&&a.years[anneeCourante-1];
+    return yearData?Math.max(0,yearData.solde):0;
+  }catch(e){return capital;}
+}
+
+// Lit les logements SCI et LMNP avec leurs crédits, peu importe le contexte actif
+function getLogementsAutoPatrimoine(){
+  const result=[];
+  ['sci','lmnp'].forEach(ctx=>{
+    try{
+      const logs=JSON.parse(localStorage.getItem(ctx+'_logements_config')||'[]');
+      const fc=JSON.parse(localStorage.getItem(ctx+'_fc')||'{}');
+      logs.filter(lg=>lg.actif!==false).forEach(lg=>{
+        const d=fc[lg.key]||{};
+        const capital=+d.capital||0;
+        const capitalRestant=getCapitalRestantDu(capital,d.taux,d.duree,d.debut);
+        result.push({
+          source:ctx==='sci'?'SCI Lémyane':'LMNP Barreteau',
+          sourceColor:ctx==='sci'?'#63b3ed':'#68d391',
+          nom:lg.label||lg.key,
+          adresse:lg.adresse||'',
+          capital,taux:+d.taux||0,duree:+d.duree||0,debutCredit:d.debut||'',
+          capitalRestant,
+          apport:+d.apport||0,
+          // Coût de revient = apport + capital emprunté (= prix d'achat total financé), pas de valeur de marché auto
+          coutRevient:capital+(+d.apport||0),
+          valeurMarche:null, // pas saisi pour SCI/LMNP — à ajouter manuellement si besoin un jour
+          isAuto:true
+        });
+      });
+    }catch(e){}
+  });
+  return result;
+}
+
+function getBiensManuelsCalcules(){
+  const list=loadBiensPatrimoine().filter(b=>b.actif!==false);
+  return list.map(b=>{
+    const capitalRestant=getCapitalRestantDu(b.capital,b.taux,b.duree,b.debutCredit);
+    const coutRevient=(+b.prixAchat||0)+(+b.travaux||0)+(+b.frais||0);
+    return{
+      ...b,
+      source:'Personnel',
+      sourceColor:'#b794f4',
+      coutRevient,
+      capitalRestant,
+      isAuto:false
+    };
+  });
+}
+
+function renderPatrimoine(){
+  const auto=getLogementsAutoPatrimoine();
+  const manuels=getBiensManuelsCalcules();
+  const tous=[...auto,...manuels];
+
+  // KPIs globaux
+  const totalCoutRevient=tous.reduce((s,b)=>s+(b.coutRevient||0),0);
+  const totalValeurMarche=manuels.reduce((s,b)=>s+(b.valeurMarche||0),0); // seulement pour les biens où c'est saisi
+  const totalCapitalRestant=tous.reduce((s,b)=>s+(b.capitalRestant||0),0);
+  const totalCapitalInitial=tous.reduce((s,b)=>s+(b.capital||0),0);
+  const totalCapitalRembo=totalCapitalInitial-totalCapitalRestant;
+  const patrimoineNet=totalCoutRevient-totalCapitalRestant; // valeur nette = coût de revient - dette restante
+
+  const kpiEl=document.getElementById('patr-kpi-grid');
+  if(kpiEl){
+    kpiEl.innerHTML=`
+      <div class="kpi"><div class="kpi-val" style="color:var(--accent)">${tous.length}</div><div class="kpi-label">Biens au total</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#63b3ed">${fmt(totalCoutRevient)}</div><div class="kpi-label">Coût de revient total</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#fc8181">${fmt(totalCapitalRestant)}</div><div class="kpi-label">Capital restant dû</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#68d391">${fmt(patrimoineNet)}</div><div class="kpi-label">Patrimoine net (revient − dette)</div></div>
+    `;
+  }
+
+  // Liste des biens
+  const listeEl=document.getElementById('patr-biens-liste');
+  if(listeEl){
+    if(!tous.length){
+      listeEl.innerHTML='<div style="color:var(--text3);font-size:12px;padding:30px;text-align:center;background:rgba(255,255,255,.02);border-radius:12px">Aucun bien enregistré. Les logements SCI/LMNP apparaîtront ici automatiquement une fois leur crédit renseigné dans Financement.</div>';
+    }else{
+      listeEl.innerHTML=tous.map(b=>{
+        const tauxEndettement=b.coutRevient>0?Math.round(b.capitalRestant/b.coutRevient*100):0;
+        const plusValue=b.valeurMarche?b.valeurMarche-b.coutRevient:null;
+        return`<div style="background:rgba(255,255,255,.03);border:1px solid ${b.sourceColor}33;border-radius:14px;padding:18px 22px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+            <div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <span style="background:${b.sourceColor}22;color:${b.sourceColor};padding:2px 10px;border-radius:8px;font-size:10px;font-weight:700;text-transform:uppercase">${b.source}</span>
+                ${b.type?`<span style="font-size:10px;color:var(--text3)">${({RP:'Résidence principale','nue-propriete':'Nue-propriété','locatif-nu':'Locatif nu',autre:'Autre'})[b.type]||''}</span>`:''}
+              </div>
+              <div style="font-size:15px;font-weight:700;color:var(--text)">${b.nom}</div>
+              ${b.adresse?`<div style="font-size:11px;color:var(--text3);margin-top:2px">${b.adresse}</div>`:''}
+            </div>
+            ${!b.isAuto?`<div style="display:flex;gap:6px">
+              <button class="btn btn-sm" onclick="ouvrirModalEditBienPatrimoine('${b.id}')" style="background:rgba(99,179,237,.1);border-color:rgba(99,179,237,.3);color:#63b3ed">✏ Modifier</button>
+              <button class="btn btn-sm" onclick="supprimerBienPatrimoine('${b.id}')" style="background:rgba(252,129,129,.08);border-color:rgba(252,129,129,.3);color:#fc8181">🗑</button>
+            </div>`:`<div style="font-size:10px;color:var(--text3);font-style:italic">Géré dans l'onglet ${b.source}</div>`}
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+            <div>
+              <div style="font-size:9px;color:var(--text3);text-transform:uppercase">Coût de revient</div>
+              <div style="font-size:15px;font-weight:700;color:var(--text)">${fmt(b.coutRevient||0)}</div>
+            </div>
+            ${b.valeurMarche?`<div>
+              <div style="font-size:9px;color:var(--text3);text-transform:uppercase">Valeur de marché</div>
+              <div style="font-size:15px;font-weight:700;color:#68d391">${fmt(b.valeurMarche)}</div>
+            </div>
+            <div>
+              <div style="font-size:9px;color:var(--text3);text-transform:uppercase">Plus-value potentielle</div>
+              <div style="font-size:15px;font-weight:700;color:${plusValue>=0?'#68d391':'#fc8181'}">${plusValue>=0?'+':''}${fmt(plusValue)}</div>
+            </div>`:''}
+            <div>
+              <div style="font-size:9px;color:var(--text3);text-transform:uppercase">Capital emprunté</div>
+              <div style="font-size:15px;font-weight:700;color:var(--text)">${fmt(b.capital||0)}</div>
+            </div>
+            <div>
+              <div style="font-size:9px;color:var(--text3);text-transform:uppercase">Capital restant dû</div>
+              <div style="font-size:15px;font-weight:700;color:#fc8181">${fmt(b.capitalRestant||0)}</div>
+              ${b.capital>0?`<div style="font-size:9px;color:var(--text3);margin-top:2px">${tauxEndettement}% du financement</div>`:''}
+            </div>
+            ${b.taux?`<div>
+              <div style="font-size:9px;color:var(--text3);text-transform:uppercase">Taux / Durée</div>
+              <div style="font-size:13px;font-weight:600;color:var(--text2)">${b.taux}% sur ${b.duree} ans</div>
+            </div>`:''}
+          </div>
+        </div>`;
+      }).join('');
+    }
+  }
+}
+
+function exporterPatrimoinePDF(){
+  const auto=getLogementsAutoPatrimoine();
+  const manuels=getBiensManuelsCalcules();
+  const tous=[...auto,...manuels];
+  const cfg=getCTXConfig();
+
+  const totalCoutRevient=tous.reduce((s,b)=>s+(b.coutRevient||0),0);
+  const totalCapitalRestant=tous.reduce((s,b)=>s+(b.capitalRestant||0),0);
+  const patrimoineNet=totalCoutRevient-totalCapitalRestant;
+  const totalValeurMarche=manuels.reduce((s,b)=>s+(b.valeurMarche||0),0);
+
+  const html=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+  <title>Patrimoine — Vue consolidée</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#1a202c;font-size:12px;padding:18mm 20mm;max-width:297mm;margin:0 auto}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #2b6cb0;padding-bottom:14px;margin-bottom:20px}
+    h1{font-size:20px;font-weight:800;color:#2b6cb0;margin:0 0 4px}
+    .section-title{font-size:13px;font-weight:700;color:#2b6cb0;border-left:4px solid #2b6cb0;padding-left:10px;margin:20px 0 10px;text-transform:uppercase}
+    table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:11px}
+    th{background:#ebf8ff;color:#2b6cb0;padding:7px 10px;text-align:left;font-size:10px;text-transform:uppercase}
+    td{padding:7px 10px;border-bottom:1px solid #e2e8f0}
+    .total-row{font-weight:700;background:#f7fafc}
+    .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+    .kpi{background:#f7fafc;border-radius:8px;padding:12px 16px;border:1px solid #e2e8f0}
+    .kpi-val{font-size:18px;font-weight:700;color:#2b6cb0}
+    .kpi-label{font-size:9px;color:#718096;text-transform:uppercase;margin-top:4px}
+    @media print{@page{size:A4 landscape;margin:12mm}body{padding:0}}
+  </style></head><body>
+    <div class="header">
+      <div style="display:flex;align-items:center;gap:12px">
+        <img src="${getLogoB64()}" alt="Logo" style="height:55px;width:auto;object-fit:contain">
+        <div>
+          <h1>Patrimoine immobilier</h1>
+          <div style="font-size:11px;color:#718096">Vue consolidée — SCI, LMNP et biens personnels</div>
+        </div>
+      </div>
+      <div style="text-align:right;font-size:10px;color:#718096">Établi le ${fmtDate(todayStr())}</div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-val">${tous.length}</div><div class="kpi-label">Biens au total</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#2b6cb0">${fmt(totalCoutRevient)}</div><div class="kpi-label">Coût de revient total</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#e53e3e">${fmt(totalCapitalRestant)}</div><div class="kpi-label">Capital restant dû</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#276749">${fmt(patrimoineNet)}</div><div class="kpi-label">Patrimoine net</div></div>
+    </div>
+
+    <div class="section-title">Détail par bien</div>
+    <table>
+      <thead><tr>
+        <th>Bien</th><th>Source</th><th style="text-align:right">Coût de revient</th>
+        <th style="text-align:right">Valeur marché</th><th style="text-align:right">Capital emprunté</th>
+        <th style="text-align:right">Capital restant dû</th><th style="text-align:right">Patrimoine net</th>
+      </tr></thead>
+      <tbody>
+        ${tous.map(b=>`<tr>
+          <td><b>${b.nom}</b>${b.adresse?`<br><span style="color:#718096;font-size:10px">${b.adresse}</span>`:''}</td>
+          <td>${b.source}</td>
+          <td style="text-align:right">${fmt(b.coutRevient||0)}</td>
+          <td style="text-align:right">${b.valeurMarche?fmt(b.valeurMarche):'—'}</td>
+          <td style="text-align:right">${fmt(b.capital||0)}</td>
+          <td style="text-align:right;color:#c53030">${fmt(b.capitalRestant||0)}</td>
+          <td style="text-align:right;font-weight:700;color:#276749">${fmt((b.coutRevient||0)-(b.capitalRestant||0))}</td>
+        </tr>`).join('')}
+        <tr class="total-row">
+          <td colspan="2">TOTAL</td>
+          <td style="text-align:right">${fmt(totalCoutRevient)}</td>
+          <td style="text-align:right">${totalValeurMarche?fmt(totalValeurMarche):'—'}</td>
+          <td style="text-align:right">${fmt(tous.reduce((s,b)=>s+(b.capital||0),0))}</td>
+          <td style="text-align:right;color:#c53030">${fmt(totalCapitalRestant)}</td>
+          <td style="text-align:right;color:#276749">${fmt(patrimoineNet)}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="font-size:9px;color:#a0aec0;margin-top:20px;padding-top:10px;border-top:1px solid #e2e8f0">
+      Le coût de revient des logements SCI/LMNP correspond au capital emprunté + apport personnel renseignés dans l'onglet Financement.
+      La valeur de marché n'est disponible que pour les biens personnels où elle a été saisie manuellement.
+      Document à titre indicatif, généré le ${fmtDate(todayStr())}.
+    </div>
+  </body></html>`;
+
+  openPrintOverlay(html,'Patrimoine — Vue consolidée');
+}
+
+
 function ouvrirModalRentabiliteNette(){
   const locs=loadLocataires();
   const cfg=getCTXConfig();
@@ -4831,6 +5250,25 @@ function genererRapportRentabiliteNette(years, logKeys){
   cumul.totalCashflow=cumul.totalNet-cumul.totalCapitalRembo;
   cumul.totalRendement=cumul.totalLoyers>0?Math.round(cumul.totalNet/cumul.totalLoyers*1000)/10:0;
   cumul.totalCashflowPct=cumul.totalLoyers>0?Math.round(cumul.totalCashflow/cumul.totalLoyers*1000)/10:0;
+
+  // Construire les rows cumulées par logement (somme sur toutes les années sélectionnées)
+  cumul.rows=logs.map(lg=>{
+    let loyers=0,fonct=0,recur=0,trav=0,interets=0,capitalRembo=0;
+    dataParAnnee.forEach(d=>{
+      const r=d.rows.find(x=>x.lg.key===lg.key);
+      if(r){loyers+=r.loyers;fonct+=r.fonct;recur+=r.recur;trav+=r.trav;interets+=r.interets;capitalRembo+=r.capitalRembo;}
+    });
+    const net=loyers-(fonct+recur)-interets;
+    const cashflow=net-capitalRembo;
+    return{lg,loyers,fonct,recur,trav,interets,capitalRembo,net,cashflow};
+  });
+  // Fusionner les catégories de fonctionnement sur toute la période (pour l'affichage mono-année)
+  cumul.parCatFonct={};
+  dataParAnnee.forEach(d=>{
+    Object.entries(d.parCatFonct).forEach(([cat,montant])=>{
+      cumul.parCatFonct[cat]=(cumul.parCatFonct[cat]||0)+montant;
+    });
+  });
 
   const periodeLabel=multiAnnees?`${years[0]} – ${years[years.length-1]}`:`${years[0]}`;
 
