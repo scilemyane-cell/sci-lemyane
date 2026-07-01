@@ -4801,6 +4801,22 @@ function saveBiensPatrimoine(list){
   syncToCloud();
 }
 
+// Valeurs de marché pour les biens auto SCI/LMNP (clé = ctx_logKey, ex: "sci_LA")
+function loadValeursMarche(){
+  const d=localStorage.getItem('patrimoine_valeurs_marche');
+  return d?JSON.parse(d):{};
+}
+function saveValeurMarche(cle, valeur){
+  const v=loadValeursMarche();
+  if(valeur>0)v[cle]=valeur;
+  else delete v[cle];
+  localStorage.setItem('patrimoine_valeurs_marche',JSON.stringify(v));
+  syncToCloud();
+}
+function getValeurMarcheKey(source, logKey){
+  return (source==='SCI Lémyane'?'sci_':'lmnp_')+logKey;
+}
+
 function ajouterBienPatrimoine(){
   const nom=document.getElementById('pb-nom').value.trim();
   const type=document.getElementById('pb-type').value;
@@ -4933,25 +4949,29 @@ function getCapitalRestantDu(capital, taux, duree, debutCredit){
 // Lit les logements SCI et LMNP avec leurs crédits, peu importe le contexte actif
 function getLogementsAutoPatrimoine(){
   const result=[];
+  const valeursMarche=loadValeursMarche();
   ['sci','lmnp'].forEach(ctx=>{
     try{
       const logs=JSON.parse(localStorage.getItem(ctx+'_logements_config')||'[]');
       const fc=JSON.parse(localStorage.getItem(ctx+'_fc')||'{}');
+      const sourceName=ctx==='sci'?'SCI Lémyane':'LMNP Barreteau';
       logs.filter(lg=>lg.actif!==false).forEach(lg=>{
         const d=fc[lg.key]||{};
         const capital=+d.capital||0;
         const capitalRestant=getCapitalRestantDu(capital,d.taux,d.duree,d.debut);
+        const cleMarche=(ctx==='sci'?'sci_':'lmnp_')+lg.key;
+        const valeurMarche=valeursMarche[cleMarche]||0;
         result.push({
-          source:ctx==='sci'?'SCI Lémyane':'LMNP Barreteau',
+          source:sourceName,
           sourceColor:ctx==='sci'?'#63b3ed':'#68d391',
           nom:lg.label||lg.key,
           adresse:lg.adresse||'',
+          logKey:lg.key,cleMarche,
           capital,taux:+d.taux||0,duree:+d.duree||0,debutCredit:d.debut||'',
           capitalRestant,
           apport:+d.apport||0,
-          // Coût de revient = apport + capital emprunté (= prix d'achat total financé), pas de valeur de marché auto
           coutRevient:capital+(+d.apport||0),
-          valeurMarche:null, // pas saisi pour SCI/LMNP — à ajouter manuellement si besoin un jour
+          valeurMarche,
           isAuto:true
         });
       });
@@ -4991,21 +5011,22 @@ function renderPatrimoine(){
   const manuels=getBiensManuelsCalcules();
   const tous=[...auto,...manuels];
 
-  // KPIs globaux
+  // KPIs — inclure toutes les valeurs de marché (auto + manuelles)
   const totalCoutRevient=tous.reduce((s,b)=>s+(b.coutRevient||0),0);
-  const totalValeurMarche=manuels.reduce((s,b)=>s+(b.valeurMarche||0),0); // seulement pour les biens où c'est saisi
+  const totalValeurMarche=tous.filter(b=>b.valeurMarche>0).reduce((s,b)=>s+(b.valeurMarche||0),0);
   const totalCapitalRestant=tous.reduce((s,b)=>s+(b.capitalRestant||0),0);
-  const totalCapitalInitial=tous.reduce((s,b)=>s+(b.capital||0),0);
-  const totalCapitalRembo=totalCapitalInitial-totalCapitalRestant;
-  const patrimoineNet=totalCoutRevient-totalCapitalRestant; // valeur nette = coût de revient - dette restante
+  const patrimoineNet=totalCoutRevient-totalCapitalRestant;
+  const plusValueLatente=totalValeurMarche>0?(totalValeurMarche-totalCoutRevient):null;
 
   const kpiEl=document.getElementById('patr-kpi-grid');
   if(kpiEl){
     kpiEl.innerHTML=`
       <div class="kpi"><div class="kpi-val" style="color:var(--accent)">${tous.length}</div><div class="kpi-label">Biens au total</div></div>
       <div class="kpi"><div class="kpi-val" style="color:#63b3ed">${fmt(totalCoutRevient)}</div><div class="kpi-label">Coût de revient total</div></div>
+      ${totalValeurMarche>0?`<div class="kpi"><div class="kpi-val" style="color:#68d391">${fmt(totalValeurMarche)}</div><div class="kpi-label">Valeur de marché estimée</div></div>`:''}
+      ${plusValueLatente!==null?`<div class="kpi"><div class="kpi-val" style="color:${plusValueLatente>=0?'#68d391':'#fc8181'}">${plusValueLatente>=0?'+':''}${fmt(plusValueLatente)}</div><div class="kpi-label">Plus-value latente</div></div>`:''}
       <div class="kpi"><div class="kpi-val" style="color:#fc8181">${fmt(totalCapitalRestant)}</div><div class="kpi-label">Capital restant dû</div></div>
-      <div class="kpi"><div class="kpi-val" style="color:#68d391">${fmt(patrimoineNet)}</div><div class="kpi-label">Patrimoine net (revient − dette)</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#f6ad55">${fmt(patrimoineNet)}</div><div class="kpi-label">Patrimoine net (revient − dette)</div></div>
     `;
   }
 
@@ -5017,46 +5038,70 @@ function renderPatrimoine(){
     }else{
       listeEl.innerHTML=tous.map(b=>{
         const tauxEndettement=b.coutRevient>0?Math.round(b.capitalRestant/b.coutRevient*100):0;
-        const plusValue=b.valeurMarche?b.valeurMarche-b.coutRevient:null;
+        const plusValue=b.valeurMarche>0?b.valeurMarche-b.coutRevient:null;
         return`<div style="background:rgba(255,255,255,.03);border:1px solid ${b.sourceColor}33;border-radius:14px;padding:18px 22px">
+          <!-- En-tête de la carte -->
           <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
             <div>
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
                 <span style="background:${b.sourceColor}22;color:${b.sourceColor};padding:2px 10px;border-radius:8px;font-size:10px;font-weight:700;text-transform:uppercase">${b.source}</span>
                 ${b.type?`<span style="font-size:10px;color:var(--text3)">${({RP:'Résidence principale','nue-propriete':'Nue-propriété','locatif-nu':'Locatif nu',autre:'Autre'})[b.type]||''}</span>`:''}
               </div>
               <div style="font-size:15px;font-weight:700;color:var(--text)">${b.nom}</div>
               ${b.adresse?`<div style="font-size:11px;color:var(--text3);margin-top:2px">${b.adresse}</div>`:''}
             </div>
-            ${!b.isAuto?`<div style="display:flex;gap:6px">
-              <button class="btn btn-sm" onclick="ouvrirModalEditBienPatrimoine('${b.id}')" style="background:rgba(99,179,237,.1);border-color:rgba(99,179,237,.3);color:#63b3ed">✏ Modifier</button>
-              <button class="btn btn-sm" onclick="supprimerBienPatrimoine('${b.id}')" style="background:rgba(252,129,129,.08);border-color:rgba(252,129,129,.3);color:#fc8181">🗑</button>
-            </div>`:`<div style="font-size:10px;color:var(--text3);font-style:italic">Géré dans l'onglet ${b.source}</div>`}
+            ${!b.isAuto
+              ?`<div style="display:flex;gap:6px">
+                  <button class="btn btn-sm" onclick="ouvrirModalEditBienPatrimoine('${b.id}')" style="background:rgba(99,179,237,.1);border-color:rgba(99,179,237,.3);color:#63b3ed">✏ Modifier</button>
+                  <button class="btn btn-sm" onclick="supprimerBienPatrimoine('${b.id}')" style="background:rgba(252,129,129,.08);border-color:rgba(252,129,129,.3);color:#fc8181">🗑</button>
+                </div>`
+              :`<div style="font-size:10px;color:var(--text3);font-style:italic">Géré dans ${b.source}</div>`
+            }
           </div>
+
+          <!-- Chiffres clés -->
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
             <div>
-              <div style="font-size:9px;color:var(--text3);text-transform:uppercase">Coût de revient</div>
+              <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-bottom:2px">Coût de revient</div>
               <div style="font-size:15px;font-weight:700;color:var(--text)">${fmt(b.coutRevient||0)}</div>
             </div>
-            ${b.valeurMarche?`<div>
-              <div style="font-size:9px;color:var(--text3);text-transform:uppercase">Valeur de marché</div>
-              <div style="font-size:15px;font-weight:700;color:#68d391">${fmt(b.valeurMarche)}</div>
-            </div>
+
+            <!-- Valeur de marché — éditable pour biens auto, éditable via modale pour biens manuels -->
             <div>
-              <div style="font-size:9px;color:var(--text3);text-transform:uppercase">Plus-value potentielle</div>
+              <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-bottom:2px">Valeur de marché estimée</div>
+              ${b.isAuto
+                ?`<div style="display:flex;align-items:center;gap:6px">
+                    <input type="number" step="1000"
+                      id="vm-${b.cleMarche}"
+                      value="${b.valeurMarche||''}"
+                      placeholder="Ex : 160 000"
+                      onblur="sauvegarderValeurMarche('${b.cleMarche}',this)"
+                      onkeydown="if(event.key==='Enter'){this.blur()}"
+                      style="width:130px;font-size:13px;font-weight:600;color:#68d391;background:rgba(104,211,145,.08);border:1px solid rgba(104,211,145,.3);border-radius:8px;padding:5px 10px">
+                    <span style="font-size:10px;color:var(--text3)">€ ↵</span>
+                  </div>`
+                :`<div style="font-size:15px;font-weight:700;color:${b.valeurMarche>0?'#68d391':'var(--text3)'}">
+                    ${b.valeurMarche>0?fmt(b.valeurMarche):'— non renseignée'}
+                  </div>`
+              }
+            </div>
+
+            ${plusValue!==null?`<div>
+              <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-bottom:2px">Plus-value potentielle</div>
               <div style="font-size:15px;font-weight:700;color:${plusValue>=0?'#68d391':'#fc8181'}">${plusValue>=0?'+':''}${fmt(plusValue)}</div>
             </div>`:''}
+
             <div>
-              <div style="font-size:9px;color:var(--text3);text-transform:uppercase">Capital emprunté</div>
+              <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-bottom:2px">Capital emprunté</div>
               <div style="font-size:15px;font-weight:700;color:var(--text)">${fmt(b.capital||0)}</div>
             </div>
             <div>
-              <div style="font-size:9px;color:var(--text3);text-transform:uppercase">Capital restant dû</div>
+              <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-bottom:2px">Capital restant dû</div>
               <div style="font-size:15px;font-weight:700;color:#fc8181">${fmt(b.capitalRestant||0)}</div>
               ${b.capital>0?`<div style="font-size:9px;color:var(--text3);margin-top:2px">${tauxEndettement}% du financement</div>`:''}
             </div>
             ${b.taux?`<div>
-              <div style="font-size:9px;color:var(--text3);text-transform:uppercase">Taux / Durée</div>
+              <div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-bottom:2px">Taux / Durée</div>
               <div style="font-size:13px;font-weight:600;color:var(--text2)">${b.taux}% sur ${b.duree} ans</div>
             </div>`:''}
           </div>
@@ -5065,6 +5110,40 @@ function renderPatrimoine(){
     }
   }
 }
+
+function sauvegarderValeurMarche(cleMarche, input){
+  const val=+input.value||0;
+  saveValeurMarche(cleMarche, val);
+  // Rafraîchir les KPIs sans tout re-render (pour ne pas perdre le focus)
+  const auto=getLogementsAutoPatrimoine();
+  const manuels=getBiensManuelsCalcules();
+  const tous=[...auto,...manuels];
+  const totalCoutRevient=tous.reduce((s,b)=>s+(b.coutRevient||0),0);
+  const totalValeurMarche=tous.filter(b=>b.valeurMarche>0).reduce((s,b)=>s+(b.valeurMarche||0),0);
+  const totalCapitalRestant=tous.reduce((s,b)=>s+(b.capitalRestant||0),0);
+  const patrimoineNet=totalCoutRevient-totalCapitalRestant;
+  const plusValueLatente=totalValeurMarche>0?(totalValeurMarche-totalCoutRevient):null;
+  const kpiEl=document.getElementById('patr-kpi-grid');
+  if(kpiEl){
+    kpiEl.innerHTML=`
+      <div class="kpi"><div class="kpi-val" style="color:var(--accent)">${tous.length}</div><div class="kpi-label">Biens au total</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#63b3ed">${fmt(totalCoutRevient)}</div><div class="kpi-label">Coût de revient total</div></div>
+      ${totalValeurMarche>0?`<div class="kpi"><div class="kpi-val" style="color:#68d391">${fmt(totalValeurMarche)}</div><div class="kpi-label">Valeur de marché estimée</div></div>`:''}
+      ${plusValueLatente!==null?`<div class="kpi"><div class="kpi-val" style="color:${plusValueLatente>=0?'#68d391':'#fc8181'}">${plusValueLatente>=0?'+':''}${fmt(plusValueLatente)}</div><div class="kpi-label">Plus-value latente</div></div>`:''}
+      <div class="kpi"><div class="kpi-val" style="color:#fc8181">${fmt(totalCapitalRestant)}</div><div class="kpi-label">Capital restant dû</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#f6ad55">${fmt(patrimoineNet)}</div><div class="kpi-label">Patrimoine net (revient − dette)</div></div>
+    `;
+  }
+  // Mettre à jour la plus-value de la carte concernée sans re-render complet
+  const b=tous.find(x=>x.cleMarche===cleMarche);
+  if(b){
+    const pv=val>0?val-(b.coutRevient||0):null;
+    const pvEl=input.closest('[style*="border-radius:14px"]');
+    // Simple retour visuel : changer couleur du champ selon plus-value
+    input.style.color=val>0?(val>=(b.coutRevient||0)?'#68d391':'#fc8181'):'#68d391';
+  }
+}
+
 
 function exporterPatrimoinePDF(){
   const auto=getLogementsAutoPatrimoine();
@@ -5075,8 +5154,8 @@ function exporterPatrimoinePDF(){
   const totalCoutRevient=tous.reduce((s,b)=>s+(b.coutRevient||0),0);
   const totalCapitalRestant=tous.reduce((s,b)=>s+(b.capitalRestant||0),0);
   const patrimoineNet=totalCoutRevient-totalCapitalRestant;
-  const totalValeurMarche=manuels.reduce((s,b)=>s+(b.valeurMarche||0),0);
-
+  const totalValeurMarche=tous.filter(b=>b.valeurMarche>0).reduce((s,b)=>s+(b.valeurMarche||0),0);
+  const plusValueLatente=totalValeurMarche>0?totalValeurMarche-totalCoutRevient:null;
   const html=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
   <title>Patrimoine — Vue consolidée</title>
   <style>
@@ -7121,7 +7200,8 @@ function ouvrirModalDepot(locId){
       </div>
       <div class="form-group" style="margin-bottom:12px">
         <label>Retenues (dégradations, loyers impayés...)</label>
-        <input type="number" id="depot-retenues" step="0.01" value="0" placeholder="0.00">
+        <input type="number" id="depot-retenues" step="0.01" value="0" placeholder="0.00"
+          oninput="(function(r,d){var rest=Math.max(0,d-r);document.getElementById('depot-montant-ret').textContent=r.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';document.getElementById('depot-montant-rest').textContent=rest.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';})(+this.value||0,${depot})">
         <div style="font-size:10px;color:var(--text3);margin-top:4px">Justificatifs requis (devis, factures, EDL)</div>
       </div>
       <div class="form-group" style="margin-bottom:12px">
@@ -7139,15 +7219,6 @@ function ouvrirModalDepot(locId){
           <span>= À restituer</span><span id="depot-montant-rest">${fmt(depot)}</span>
         </div>
       </div>
-      <script>
-        document.getElementById('depot-retenues').oninput=function(){
-          var r=+this.value||0;
-          var dep=${depot};
-          var rest=Math.max(0,dep-r);
-          document.getElementById('depot-montant-ret').textContent=r.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
-          document.getElementById('depot-montant-rest').textContent=rest.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
-        };
-      <\/script>
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button class="btn btn-sm" onclick="document.getElementById('modal-depot').remove()" style="background:var(--bg3);border-color:var(--border)">Annuler</button>
         <button class="btn btn-sm" onclick="genererCourrierDepot('${locId}')" style="background:#63b3ed;color:#0a0e1a;border-color:#63b3ed;font-weight:700">📄 Générer le courrier</button>
