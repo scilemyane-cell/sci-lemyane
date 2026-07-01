@@ -245,18 +245,27 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 .print-toolbar h3{font-size:14px;font-weight:600;color:#63b3ed;flex:1}
 .print-frame{flex:1;border:none;background:#fff}
 
+/* ══ RESPONSIVE MOBILE ══════════════════════════════════════════════ */
 @media (max-width:768px){
-  .header{padding:10px 12px;flex-wrap:wrap;gap:6px}
-  .header-left h1{font-size:13px}
-  .header-left p{font-size:10px;display:none}
-  .header-right{gap:4px;flex-wrap:wrap}
-  .badge{font-size:10px;padding:3px 7px}
-  .tabs{padding:8px 6px 0;gap:0;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
-  .tab{padding:8px 10px;font-size:10px;white-space:nowrap}
-  .content{padding:12px 10px}
+  /* Header */
+  .header{padding:8px 10px;flex-wrap:wrap;gap:4px;min-height:unset}
+  .header-left h1{font-size:12px}
+  .header-left p{display:none}
+  .header-right{gap:3px;flex-wrap:wrap;justify-content:flex-end}
+  .badge{font-size:9px;padding:2px 6px}
+  #header-logo-img{height:32px!important}
+  /* Masquer labels non essentiels sur mobile */
+  #btn-patrimoine-global span:not(:first-child){display:none}
+  /* Navigation */
+  .tabs{padding:6px 4px 0;gap:0;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{padding:7px 10px;font-size:10px;white-space:nowrap}
+  .tabs-sub .tab{padding:6px 8px;font-size:10px}
+  /* Contenu */
+  .content{padding:10px 8px}
   .kpi-grid{grid-template-columns:repeat(2,1fr);gap:8px}
-  .kpi{padding:12px 14px}
-  .kpi-val{font-size:15px}
+  .kpi{padding:10px 12px}
+  .kpi-val{font-size:14px}
   .kpi-label{font-size:9px}
   .charts-grid{grid-template-columns:1fr}
   .logements-grid{grid-template-columns:1fr}
@@ -266,47 +275,76 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
   .form-grid{grid-template-columns:1fr}
   .filters{gap:6px;flex-wrap:wrap}
   .filter-select{font-size:11px;padding:6px 10px}
+  /* Factures */
   .factures-table th:nth-child(4),.factures-table td:nth-child(4),
   .factures-table th:nth-child(7),.factures-table td:nth-child(7),
   .factures-table th:nth-child(8),.factures-table td:nth-child(8),
   .factures-table th:nth-child(10),.factures-table td:nth-child(10){display:none}
+  /* Split view */
   .split-body{flex-direction:column}
-  .split-pdf{height:45vh;border-right:none;border-bottom:1px solid var(--border2)}
-  .split-form{width:100%;padding:12px}
-  .login-card{width:92vw;padding:24px 16px}
-  .budget-grid{grid-template-columns:120px repeat(3,1fr) 80px;font-size:11px}
-  /* Locataires mobile */
-  .loc-tab-bar{gap:0;padding:0 4px}
-  .loc-tab-btn{padding:8px 10px;font-size:10px}
-  .loc-log-header{flex-wrap:wrap;gap:10px;padding:14px 16px}
+  .split-pdf{height:40vh;border-right:none;border-bottom:1px solid var(--border2)}
+  .split-form{width:100%;padding:10px}
+  /* Login */
+  .login-card{width:92vw;padding:20px 14px}
+  /* Budget */
+  .budget-grid{grid-template-columns:110px repeat(3,1fr) 70px;font-size:10px}
+  /* Locataires */
+  .loc-tab-bar{gap:0;padding:0 2px}
+  .loc-tab-btn{padding:7px 8px;font-size:10px}
+  .loc-log-header{flex-wrap:wrap;gap:8px;padding:12px}
   .loc-metric{min-width:calc(50% - 8px)}
-  /* Modale mobile */
-  #modal-paiement-loyer>div,#modal-quittance>div,#modal-irl>div,#modal-relance>div{
-    width:96vw!important;max-height:90vh;overflow-y:auto;padding:20px 16px!important
+  /* Switch SCI/LMNP */
+  #switch-btn-sci,#switch-btn-lmnp{font-size:9px;padding:4px 8px}
+  /* Bouton patrimoine */
+  #btn-patrimoine-global{font-size:10px;padding:6px 10px}
+  /* Print toolbar */
+  .print-toolbar{flex-wrap:wrap;gap:5px;padding:8px}
+  .print-toolbar button{font-size:10px;padding:5px 8px}
+  /* Overlay patrimoine mobile */
+  #overlay-patrimoine > div:first-child{padding:12px 14px}
+  #overlay-patrimoine > div:first-child > div:first-child > div:last-child > div:first-child{font-size:14px}
+  #overlay-patrimoine > div:nth-child(2){padding:12px 8px}
+  /* Modales full screen sur mobile */
+  #modal-paiement-loyer>div,#modal-quittance>div,#modal-irl>div,
+  #modal-relance>div,#modal-edit-bien>div,#modal-depot>div,
+  #modal-courriers>div,#modal-annees-charge>div,#modal-edit-charge>div,
+  #modal-rentabilite-nette>div,#modal-export-loyers>div{
+    width:98vw!important;max-height:92vh!important;overflow-y:auto;
+    padding:16px 12px!important;border-radius:14px!important;margin:4vw auto
   }
-  /* Switch header mobile */
-  #switch-btn-sci,#switch-btn-lmnp{font-size:10px;padding:5px 10px}
-  /* Header logo mobile */
-  #header-logo-img{height:38px!important}
-  /* Print toolbar mobile */
-  .print-toolbar{flex-wrap:wrap;gap:6px;padding:10px}
-  .print-toolbar button{font-size:11px;padding:6px 10px}
 }
+
 @media (max-width:480px){
   .kpi-grid{grid-template-columns:1fr 1fr}
-  .tabs{font-size:10px}
+  .kpi-val{font-size:13px}
+  .tabs{font-size:9px}
   .factures-table th:nth-child(3),.factures-table td:nth-child(3){display:none}
-  .loc-tab-btn{padding:6px 8px;font-size:9px}
-  /* Grille locataires synthèse en 1 colonne sur petit écran */
-  #loc-futur-container [style*="grid-template-columns:repeat(2"]{
-    grid-template-columns:1fr!important
+  .loc-tab-btn{padding:5px 7px;font-size:9px}
+  /* Header ultra-compact */
+  #header-logo-img{height:28px!important}
+  .header-left h1{font-size:11px}
+  #switch-btn-sci,#switch-btn-lmnp{font-size:9px;padding:3px 7px}
+  #btn-patrimoine-global{font-size:9px;padding:5px 8px;margin:0 2px}
+  /* Patrimoine : grilles en 2 colonnes sur petits écrans */
+  #patr-kpi-grid{grid-template-columns:1fr 1fr!important}
+  /* Cartes biens patrimoine */
+  #patr-biens-liste > div > div:last-child{
+    grid-template-columns:repeat(2,1fr)!important
   }
 }
-/* Touch-friendly — boutons plus grands sur tactile */
+
+/* Touch-friendly */
 @media (hover:none) and (pointer:coarse){
-  .btn,.btn-sm,.btn-export,.loc-tab-btn{min-height:36px}
-  .loc-cal-cell{min-height:32px;min-width:32px}
-  input,select,textarea{font-size:16px!important} /* évite le zoom iOS */
+  .btn,.btn-sm,.btn-export,.loc-tab-btn{min-height:40px}
+  .loc-cal-cell{min-height:34px;min-width:34px}
+  /* Évite zoom iOS sur les champs */
+  input,select,textarea{font-size:16px!important}
+  /* Champ valeur de marché patrimoine — exception pour éviter zoom */
+  #patr-biens-liste input[type="number"]{font-size:16px!important}
+  /* Boutons patrimoine plus grands */
+  #patr-biens-liste .btn-sm{min-height:38px;padding:8px 12px}
+  /* Overlay patrimoine scroll fluide iOS */
+  #overlay-patrimoine{-webkit-overflow-scrolling:touch}
 }
 </style>
 </head>
@@ -5114,7 +5152,15 @@ function renderPatrimoine(){
 function sauvegarderValeurMarche(cleMarche, input){
   const val=+input.value||0;
   saveValeurMarche(cleMarche, val);
-  // Rafraîchir les KPIs sans tout re-render (pour ne pas perdre le focus)
+  // Mettre à jour seulement les KPIs — ne PAS re-rendre toute la liste (perdrait le focus)
+  _updatePatrimoineKPIs();
+  // Retour visuel sur le champ
+  const auto=getLogementsAutoPatrimoine();
+  const b=auto.find(x=>x.cleMarche===cleMarche);
+  if(b) input.style.color=val>0?(val>=(b.coutRevient||0)?'#68d391':'#fc8181'):'#68d391';
+}
+
+function _updatePatrimoineKPIs(){
   const auto=getLogementsAutoPatrimoine();
   const manuels=getBiensManuelsCalcules();
   const tous=[...auto,...manuels];
@@ -5124,24 +5170,15 @@ function sauvegarderValeurMarche(cleMarche, input){
   const patrimoineNet=totalCoutRevient-totalCapitalRestant;
   const plusValueLatente=totalValeurMarche>0?(totalValeurMarche-totalCoutRevient):null;
   const kpiEl=document.getElementById('patr-kpi-grid');
-  if(kpiEl){
-    kpiEl.innerHTML=`
-      <div class="kpi"><div class="kpi-val" style="color:var(--accent)">${tous.length}</div><div class="kpi-label">Biens au total</div></div>
-      <div class="kpi"><div class="kpi-val" style="color:#63b3ed">${fmt(totalCoutRevient)}</div><div class="kpi-label">Coût de revient total</div></div>
-      ${totalValeurMarche>0?`<div class="kpi"><div class="kpi-val" style="color:#68d391">${fmt(totalValeurMarche)}</div><div class="kpi-label">Valeur de marché estimée</div></div>`:''}
-      ${plusValueLatente!==null?`<div class="kpi"><div class="kpi-val" style="color:${plusValueLatente>=0?'#68d391':'#fc8181'}">${plusValueLatente>=0?'+':''}${fmt(plusValueLatente)}</div><div class="kpi-label">Plus-value latente</div></div>`:''}
-      <div class="kpi"><div class="kpi-val" style="color:#fc8181">${fmt(totalCapitalRestant)}</div><div class="kpi-label">Capital restant dû</div></div>
-      <div class="kpi"><div class="kpi-val" style="color:#f6ad55">${fmt(patrimoineNet)}</div><div class="kpi-label">Patrimoine net (revient − dette)</div></div>
-    `;
-  }
-  // Mettre à jour la plus-value de la carte concernée sans re-render complet
-  const b=tous.find(x=>x.cleMarche===cleMarche);
-  if(b){
-    const pv=val>0?val-(b.coutRevient||0):null;
-    const pvEl=input.closest('[style*="border-radius:14px"]');
-    // Simple retour visuel : changer couleur du champ selon plus-value
-    input.style.color=val>0?(val>=(b.coutRevient||0)?'#68d391':'#fc8181'):'#68d391';
-  }
+  if(!kpiEl)return;
+  kpiEl.innerHTML=`
+    <div class="kpi"><div class="kpi-val" style="color:var(--accent)">${tous.length}</div><div class="kpi-label">Biens au total</div></div>
+    <div class="kpi"><div class="kpi-val" style="color:#63b3ed">${fmt(totalCoutRevient)}</div><div class="kpi-label">Coût de revient total</div></div>
+    ${totalValeurMarche>0?`<div class="kpi"><div class="kpi-val" style="color:#68d391">${fmt(totalValeurMarche)}</div><div class="kpi-label">Valeur de marché estimée</div></div>`:''}
+    ${plusValueLatente!==null?`<div class="kpi"><div class="kpi-val" style="color:${plusValueLatente>=0?'#68d391':'#fc8181'}">${plusValueLatente>=0?'+':''}${fmt(plusValueLatente)}</div><div class="kpi-label">Plus-value latente</div></div>`:''}
+    <div class="kpi"><div class="kpi-val" style="color:#fc8181">${fmt(totalCapitalRestant)}</div><div class="kpi-label">Capital restant dû</div></div>
+    <div class="kpi"><div class="kpi-val" style="color:#f6ad55">${fmt(patrimoineNet)}</div><div class="kpi-label">Patrimoine net (revient − dette)</div></div>
+  `;
 }
 
 
